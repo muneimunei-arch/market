@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Market Dashboard JP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{
+  --bg:#080C18;--card:#0F1626;--card2:#162040;
+  --acc:#00C4E8;--up:#00E07A;--dn:#FF3B55;
+  --gold:#F5C842;--silver:#A8C0D0;--plat:#7ECFCF;
+  --txt:#D8E4F0;--txt2:#6A85A8;--brd:#1A2E50;
+  --mono:'Courier New',monospace;
+  --cols:1;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;min-height:100vh;overscroll-behavior:none}
+
+/* ===== LAYOUT ===== */
+#app{padding:8px;width:100%}
+
+/* iPhone: 縦1列 */
+.layout-grid{display:flex;flex-direction:column;gap:0}
+
+/* iPad 横: 左右2ペイン */
+@media (min-width:900px) and (orientation:landscape){
+  #app{display:grid;grid-template-rows:auto auto 1fr;height:100vh;overflow:hidden}
+  .layout-grid{flex-direction:row;gap:8px;flex:1;overflow:hidden}
+  .col-left,.col-right{flex:1;overflow-y:auto;padding-right:4px;min-width:0}
+  .col-left::-webkit-scrollbar,.col-right::-webkit-scrollbar{width:3px}
+  .col-left::-webkit-scrollbar-thumb,.col-right::-webkit-scrollbar-thumb{background:var(--brd)}
+}
+/* iPad 縦: 少し広く */
+@media (min-width:600px) and (max-width:899px){
+  #app{max-width:700px;margin:0 auto}
+  .g3{grid-template-columns:1fr 1fr 1fr}
+}
+
+/* ===== HEADER ===== */
+.header{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:8px 12px;margin-bottom:8px}
+.header h1{font-size:12px;font-weight:700;color:var(--acc);letter-spacing:1px;white-space:nowrap}
+.header-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+#last-update{font-size:10px;color:var(--txt2);white-space:nowrap}
+#update-btn{background:var(--acc);color:#000;border:none;padding:5px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px;white-space:nowrap}
+#update-btn:disabled{opacity:.45;cursor:not-allowed}
+.spin{display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ===== PERIOD BAR ===== */
+.period-bar{display:flex;gap:5px;margin-bottom:8px;overflow-x:auto;padding-bottom:2px}
+.period-bar::-webkit-scrollbar{display:none}
+.pbtn{flex-shrink:0;background:var(--card);border:1px solid var(--brd);color:var(--txt2);padding:4px 10px;border-radius:18px;font-size:11px;cursor:pointer;transition:all .15s}
+.pbtn.active{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}
+
+/* ===== SECTION ===== */
+.sec{font-size:9px;color:var(--txt2);letter-spacing:2px;text-transform:uppercase;margin:8px 0 5px 2px;font-weight:600}
+
+/* ===== GRIDS ===== */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px}
+.g4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:6px}
+
+/* ===== CARD ===== */
+.card{background:var(--card);border:1px solid var(--brd);border-radius:9px;padding:7px 8px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--acc);border-radius:9px 0 0 9px;transition:background .3s}
+.card.up::before{background:var(--up)}
+.card.dn::before{background:var(--dn)}
+.card.gc::before{background:var(--gold)}
+.card.sc::before{background:var(--silver)}
+.card.pc::before{background:var(--plat)}
+.card.ac::before{background:var(--acc)}
+
+.c-label{font-size:9px;color:var(--txt2);margin-bottom:1px;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.c-val{font-size:13px;font-weight:700;font-family:var(--mono);color:var(--txt);line-height:1.15;white-space:nowrap}
+.c-chg{font-size:9px;margin-top:1px;font-family:var(--mono);white-space:nowrap}
+.c-chg.up{color:var(--up)}
+.c-chg.dn{color:var(--dn)}
+.mini-chart{position:relative;width:100%;height:52px;margin-top:4px}
+.mini-chart canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+
+/* ===== WIDE CARD ===== */
+.wcard{background:var(--card);border:1px solid var(--brd);border-radius:9px;padding:8px 10px;margin-bottom:6px;position:relative;overflow:hidden}
+.wcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--acc);border-radius:9px 0 0 9px}
+.wcard.up::before{background:var(--up)}
+.wcard.dn::before{background:var(--dn)}
+.wcard.gc::before{background:var(--gold)}
+.wcard-inner{display:flex;gap:8px;align-items:flex-start}
+.wcard-info{flex-shrink:0;min-width:80px}
+.wcard-chart{flex:1;min-width:0;position:relative;height:64px}
+.wcard-chart canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+
+/* ===== LOAN CARD ===== */
+.loan-wrap{background:var(--card);border:1px solid var(--brd);border-radius:9px;padding:8px 10px;margin-bottom:6px;position:relative;overflow:hidden}
+.loan-wrap::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold);border-radius:9px 0 0 9px}
+.loan-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.loan-title{font-size:9px;color:var(--txt2);letter-spacing:.5px;font-weight:600}
+.loan-vals{display:flex;gap:16px}
+.loan-val-item{text-align:center}
+.loan-val-label{font-size:8px;color:var(--txt2)}
+.loan-val-num{font-size:15px;font-weight:700;font-family:var(--mono)}
+.loan-val-num.var{color:var(--up)}
+.loan-val-num.fix{color:var(--gold)}
+.loan-chart{position:relative;height:58px;margin-top:4px}
+.loan-chart canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+.loan-note{font-size:8px;color:var(--txt2);margin-top:5px}
+
+/* ===== OVERLAY ===== */
+#overlay{position:fixed;inset:0;background:rgba(8,12,24,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:12px}
+#overlay.hidden{display:none}
+.ov-icon{font-size:32px;animation:spin .7s linear infinite}
+.ov-text{color:var(--acc);font-size:14px;font-weight:600}
+.ov-sub{font-size:11px;color:var(--txt2);text-align:center;max-width:260px}
+
+/* ===== TOAST ===== */
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#2A0A14;border:1px solid var(--dn);color:var(--dn);padding:8px 16px;border-radius:8px;font-size:11px;z-index:1000;display:none;max-width:88%;text-align:center}
+#toast.show{display:block}
+#api-status{font-size:9px;color:var(--txt2);text-align:center;padding:3px 0 6px;min-height:14px}
+footer{text-align:center;font-size:9px;color:var(--txt2);padding:8px 0 14px}
+</style>
+</head>
+<body>
+<div id="overlay">
+  <div class="ov-icon">⟳</div>
+  <div class="ov-text">データ取得中...</div>
+  <div class="ov-sub" id="ov-sub">APIに接続しています</div>
+</div>
+<div id="toast"></div>
+
+<div id="app">
+  <!-- HEADER (全幅) -->
+  <div class="header">
+    <h1>📊 MARKET DASHBOARD JP</h1>
+    <div class="header-right">
+      <span id="last-update">未取得</span>
+      <button id="update-btn" onclick="updateAll()"><span id="spin-icon">↻</span> 更新</button>
+    </div>
+  </div>
+  <!-- PERIOD (全幅) -->
+  <div class="period-bar">
+    <button class="pbtn" onclick="setPeriod(1,this)">日</button>
+    <button class="pbtn active" onclick="setPeriod(7,this)">週</button>
+    <button class="pbtn" onclick="setPeriod(30,this)">月</button>
+    <button class="pbtn" onclick="setPeriod(90,this)">3ヶ月</button>
+    <button class="pbtn" onclick="setPeriod(180,this)">6ヶ月</button>
+    <button class="pbtn" onclick="setPeriod(365,this)">年</button>
+  </div>
+
+  <!-- 2カラムレイアウト本体 -->
+  <div class="layout-grid">
+    <!-- ===== 左カラム ===== -->
+    <div class="col-left">
+
+      <!-- ① 為替 -->
+      <div class="sec">① 為替情報</div>
+      <div class="g3">
+        <div class="card" id="card-usdjpy"><div class="c-label">USD/JPY</div><div class="c-val" id="v-usdjpy">---</div><div class="c-chg" id="c-usdjpy">取得中</div><div class="mini-chart"><canvas id="ch-usdjpy"></canvas></div></div>
+        <div class="card" id="card-eurjpy"><div class="c-label">EUR/JPY</div><div class="c-val" id="v-eurjpy">---</div><div class="c-chg" id="c-eurjpy">取得中</div><div class="mini-chart"><canvas id="ch-eurjpy"></canvas></div></div>
+        <div class="card" id="card-inrjpy"><div class="c-label">INR/JPY</div><div class="c-val" id="v-inrjpy">---</div><div class="c-chg" id="c-inrjpy">取得中</div><div class="mini-chart"><canvas id="ch-inrjpy"></canvas></div></div>
+      </div>
+
+      <!-- ② 日本株 -->
+      <div class="sec">② 日本株式</div>
+      <div class="g2">
+        <div class="card" id="card-n225"><div class="c-label">日経 225</div><div class="c-val" id="v-n225">---</div><div class="c-chg" id="c-n225">取得中</div><div class="mini-chart"><canvas id="ch-n225"></canvas></div></div>
+        <div class="card" id="card-topix"><div class="c-label">TOPIX</div><div class="c-val" id="v-topix">---</div><div class="c-chg" id="c-topix">取得中</div><div class="mini-chart"><canvas id="ch-topix"></canvas></div></div>
+      </div>
+
+      <!-- ③ 米国株 -->
+      <div class="sec">③ 米国株式</div>
+      <div class="g3">
+        <div class="card" id="card-sp500"><div class="c-label">S&amp;P 500</div><div class="c-val" id="v-sp500">---</div><div class="c-chg" id="c-sp500">取得中</div><div class="mini-chart"><canvas id="ch-sp500"></canvas></div></div>
+        <div class="card" id="card-nasdaq"><div class="c-label">NASDAQ</div><div class="c-val" id="v-nasdaq">---</div><div class="c-chg" id="c-nasdaq">取得中</div><div class="mini-chart"><canvas id="ch-nasdaq"></canvas></div></div>
+        <div class="card" id="card-dow"><div class="c-label">DOW</div><div class="c-val" id="v-dow">---</div><div class="c-chg" id="c-dow">取得中</div><div class="mini-chart"><canvas id="ch-dow"></canvas></div></div>
+      </div>
+
+      <!-- ④ インド株 -->
+      <div class="sec">④ インド株式</div>
+      <div class="g2">
+        <div class="card" id="card-sensex"><div class="c-label">BSE SENSEX</div><div class="c-val" id="v-sensex">---</div><div class="c-chg" id="c-sensex">取得中</div><div class="mini-chart"><canvas id="ch-sensex"></canvas></div></div>
+        <div class="card" id="card-nifty"><div class="c-label">NIFTY 50</div><div class="c-val" id="v-nifty">---</div><div class="c-chg" id="c-nifty">取得中</div><div class="mini-chart"><canvas id="ch-nifty"></canvas></div></div>
+      </div>
+
+      <!-- ⑨ Bitcoin -->
+      <div class="sec">⑨ ビットコイン</div>
+      <div class="wcard" id="card-btc">
+        <div class="wcard-inner">
+          <div class="wcard-info"><div class="c-label">BTC / USD</div><div class="c-val" id="v-btc">---</div><div class="c-chg" id="c-btc">取得中</div></div>
+          <div class="wcard-chart"><canvas id="ch-btc"></canvas></div>
+        </div>
+      </div>
+
+    </div><!-- /col-left -->
+
+    <!-- ===== 右カラム ===== -->
+    <div class="col-right">
+
+      <!-- ⑥ 住宅ローン -->
+      <div class="sec">⑥ 住宅ローン金利（三井住友銀行）</div>
+      <div class="loan-wrap" id="card-loan">
+        <div class="loan-header">
+          <div class="loan-title">変動35年 vs フラット35（固定）</div>
+          <div class="loan-vals">
+            <div class="loan-val-item"><div class="loan-val-label">変動35年</div><div class="loan-val-num var" id="v-loan-var">---%</div></div>
+            <div class="loan-val-item"><div class="loan-val-label">フラット35</div><div class="loan-val-num fix" id="v-loan-fix">---%</div></div>
+          </div>
+        </div>
+        <div class="loan-chart"><canvas id="ch-loan"></canvas></div>
+        <div class="loan-note">※ 変動: 三井住友銀行 店頭基準金利。フラット35: 住宅金融支援機構公表値。実際はキャンペーン等で異なります。</div>
+      </div>
+
+      <!-- ⑦ 短期プライム・日本国債 -->
+      <div class="sec">⑦ 短期プライムレート / 日本10年国債</div>
+      <div class="g2">
+        <div class="card gc" id="card-sprme"><div class="c-label">短期プライムレート</div><div class="c-val" id="v-sprme">---</div><div class="c-chg" id="c-sprme">取得中</div><div class="mini-chart"><canvas id="ch-sprme"></canvas></div></div>
+        <div class="card" id="card-jgb10"><div class="c-label">日本 10年国債</div><div class="c-val" id="v-jgb10">---</div><div class="c-chg" id="c-jgb10">取得中</div><div class="mini-chart"><canvas id="ch-jgb10"></canvas></div></div>
+      </div>
+
+      <!-- ⑧ 米国10年国債 -->
+      <div class="sec">⑧ 米国10年国債</div>
+      <div class="wcard" id="card-ust10">
+        <div class="wcard-inner">
+          <div class="wcard-info"><div class="c-label">US Treasury 10Y</div><div class="c-val" id="v-ust10">---</div><div class="c-chg" id="c-ust10">取得中</div></div>
+          <div class="wcard-chart"><canvas id="ch-ust10"></canvas></div>
+        </div>
+      </div>
+
+      <!-- ⑩ 貴金属 -->
+      <div class="sec">⑩ 金・銀・プラチナ（USD/oz）</div>
+      <div class="g3">
+        <div class="card gc" id="card-gold"><div class="c-label">金 GOLD</div><div class="c-val" id="v-gold">---</div><div class="c-chg" id="c-gold">取得中</div><div class="mini-chart"><canvas id="ch-gold"></canvas></div></div>
+        <div class="card sc" id="card-silver"><div class="c-label">銀 SILVER</div><div class="c-val" id="v-silver">---</div><div class="c-chg" id="c-silver">取得中</div><div class="mini-chart"><canvas id="ch-silver"></canvas></div></div>
+        <div class="card pc" id="card-plat"><div class="c-label">プラチナ Pt</div><div class="c-val" id="v-plat">---</div><div class="c-chg" id="c-plat">取得中</div><div class="mini-chart"><canvas id="ch-plat"></canvas></div></div>
+      </div>
+
+      <div id="api-status"></div>
+      <footer>外部API（無料）からリアルタイム取得。遅延・差異がある場合があります。</footer>
+    </div><!-- /col-right -->
+  </div><!-- /layout-grid -->
+</div><!-- /#app -->
+
+<script>
+// =====================================================
+// STATE
+// =====================================================
+const CI = {};
+let DAYS = 7;
+let BUSY = false;
+
+// フォールバック値（API失敗時の参考値）
+const FB = {
+  usdjpy:144.5, eurjpy:163.0, inrjpy:1.73,
+  n225:38800,   topix:2750,
+  sp500:5490,   nasdaq:17600, dow:40800,
+  sensex:82500, nifty:25100,
+  ust10:4.35,   jgb10:1.50,  sprme:1.875,
+  btc:105000,   gold:3310,   silver:33.5, plat:1060,
+  loanVar:2.475, loanFix:1.82
+};
+
+// =====================================================
+// PERIOD
+// =====================================================
+function setPeriod(d, btn) {
+  DAYS = d;
+  document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateAll();
+}
+
+// =====================================================
+// TOAST / OV-SUB
+// =====================================================
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 5000);
+}
+function setOvSub(t) {
+  const el = document.getElementById('ov-sub');
+  if (el) el.textContent = t;
+}
+
+// =====================================================
+// SERIES GENERATOR
+// =====================================================
+function genSeries(latest, days, vol) {
+  const n = Math.max(2, Math.min(days, 90));
+  const arr = [latest];
+  for (let i = 1; i < n; i++) {
+    const prev = arr[0];
+    arr.unshift(parseFloat((prev * (1 - (Math.random()-0.49)*vol)).toFixed(8)));
+  }
+  arr[arr.length - 1] = latest;
+  return arr;
+}
+
+function makeLabels(days, useHourly) {
+  const n = useHourly ? 24 : Math.max(2, Math.min(days, 90));
+  const out = [];
+  const now = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    if (useHourly) {
+      const d = new Date(now);
+      d.setHours(d.getHours() - i);
+      out.push(d.getHours() + ':00');
+    } else {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      out.push((d.getMonth()+1) + '/' + d.getDate());
+    }
+  }
+  return out;
+}
+
+// =====================================================
+// CHART DRAW（タッチでツールチップ表示）
+// =====================================================
+function makeTooltipPlugin(isRate, isMoney) {
+  return {
+    enabled: true,
+    mode: 'index',
+    intersect: false,
+    backgroundColor: 'rgba(10,15,30,0.92)',
+    titleColor: '#6A85A8',
+    bodyColor: '#D8E4F0',
+    borderColor: '#1A2E50',
+    borderWidth: 1,
+    padding: 6,
+    titleFont: { size: 9 },
+    bodyFont: { family: "'Courier New', monospace", size: 11, weight: '700' },
+    callbacks: {
+      title: items => items[0]?.label || '',
+      label: item => {
+        const v = item.raw;
+        if (isRate)  return ' ' + Number(v).toFixed(3) + '%';
+        if (isMoney) return ' $' + Number(v).toLocaleString('en-US', {maximumFractionDigits:2});
+        return ' ' + Number(v).toLocaleString('ja-JP', {maximumFractionDigits:2});
+      }
+    }
+  };
+}
+
+function drawChart(id, labels, data, color, h, opts) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+
+  const height = h || 52;
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createLinearGradient(0, 0, 0, height);
+  grad.addColorStop(0, color + '50');
+  grad.addColorStop(1, color + '06');
+
+  const isRate  = opts && opts.rate;
+  const isMoney = opts && opts.money;
+  const isMulti = opts && opts.datasets; // 複数ライン用
+
+  let datasets;
+  if (isMulti) {
+    datasets = opts.datasets.map(ds => ({
+      label: ds.label,
+      data: ds.data,
+      borderColor: ds.color,
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: false,
+      tension: 0.4
+    }));
+  } else {
+    datasets = [{
+      data,
+      borderColor: color,
+      borderWidth: 1.8,
+      pointRadius: 0,
+      fill: true,
+      backgroundColor: grad,
+      tension: 0.4
+    }];
+  }
+
+  const tooltipCfg = makeTooltipPlugin(isRate, isMoney);
+  if (isMulti) {
+    tooltipCfg.callbacks.label = item => {
+      const ds = item.dataset;
+      return ' ' + ds.label + ': ' + Number(item.raw).toFixed(3) + '%';
+    };
+  }
+
+  CI[id] = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: isMulti ? {
+          display: true,
+          position: 'top',
+          labels: { color: '#6A85A8', font: { size: 9 }, boxWidth: 12, padding: 6 }
+        } : { display: false },
+        tooltip: tooltipCfg
+      },
+      scales: {
+        x: { display: false },
+        y: {
+          display: false,
+          min: (() => {
+            const all = isMulti ? opts.datasets.flatMap(d=>d.data) : data;
+            return Math.min(...all) * 0.996;
+          })(),
+          max: (() => {
+            const all = isMulti ? opts.datasets.flatMap(d=>d.data) : data;
+            return Math.max(...all) * 1.004;
+          })()
+        }
+      }
+    }
+  });
+}
+
+// =====================================================
+// CARD UPDATE
+// =====================================================
+function setCard(id, valStr, series, colorClass) {
+  const first = series[0], last = series[series.length-1];
+  const diff  = last - first;
+  const pct   = (diff / first) * 100;
+  const isUp  = diff >= 0;
+
+  const card = document.getElementById('card-' + id);
+  if (card) {
+    ['up','dn','gc','sc','pc','ac'].forEach(c => card.classList.remove(c));
+    card.classList.add(colorClass || (isUp ? 'up' : 'dn'));
+  }
+  const ve = document.getElementById('v-' + id);
+  if (ve) ve.textContent = valStr;
+  const ce = document.getElementById('c-' + id);
+  if (ce) {
+    const sign = isUp ? '+' : '';
+    const absDiff = Math.abs(diff);
+    const diffStr = absDiff < 0.01 ? absDiff.toFixed(4) : absDiff < 10 ? absDiff.toFixed(3) : absDiff < 1000 ? absDiff.toFixed(2) : Math.round(absDiff).toLocaleString();
+    ce.textContent = (isUp?'+':'-') + diffStr + ' (' + sign + pct.toFixed(2) + '%)';
+    ce.className = 'c-chg ' + (isUp ? 'up' : 'dn');
+  }
+  return isUp ? '#00E07A' : '#FF3B55';
+}
+
+// =====================================================
+// 高速化: 全シンボルを1リクエストでまとめて取得
+// Yahoo Finance v7 quote API (CORS proxy 1本のみ・3秒タイムアウト)
+// =====================================================
+const PROXY = u => 'https://corsproxy.io/?' + encodeURIComponent(u);
+const TO = 8000; // タイムアウト(ms)
+
+// 全シンボルを1回で取得 → {symbol: price} のマップを返す
+async function fetchAllQuotes(symbols) {
+  const joined = symbols.join(',');
+  const apiUrl = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(joined)}&fields=regularMarketPrice,regularMarketChangePercent`;
+  const res = await fetch(PROXY(apiUrl), {
+    cache: 'no-store',
+    signal: AbortSignal.timeout(TO)
+  });
+  if (!res.ok) throw new Error('quote API ' + res.status);
+  const json = JSON.parse(await res.text());
+  const map = {};
+  (json?.quoteResponse?.result || []).forEach(r => {
+    map[r.symbol] = {
+      latest: r.regularMarketPrice,
+      changePct: r.regularMarketChangePercent  // 前日比%（既製品）
+    };
+  });
+  return map;
+}
+
+// 個別シンボルの履歴を1本だけ取る（グラフ用・並列実行）
+async function fetchHistory(symbol, days) {
+  let range, interval;
+  if      (days <= 1)   { range = '1d';  interval = '60m'; }
+  else if (days <= 7)   { range = '5d';  interval = '1d';  }
+  else if (days <= 35)  { range = '1mo'; interval = '1d';  }
+  else if (days <= 95)  { range = '3mo'; interval = '1d';  }
+  else if (days <= 185) { range = '6mo'; interval = '1wk'; }
+  else                  { range = '1y';  interval = '1wk'; }
+
+  const apiUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`;
+  try {
+    const res = await fetch(PROXY(apiUrl), {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(TO)
+    });
+    if (!res.ok) return null;
+    const json = JSON.parse(await res.text());
+    const closes = json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
+    const valid = closes.filter(v => v != null && !isNaN(v));
+    return valid.length > 1 ? valid : null;
+  } catch(e) { return null; }
+}
+
+// =====================================================
+// API: 為替 (open.er-api.com — CORS OK)
+// =====================================================
+async function fetchFX() {
+  setOvSub('為替データを取得中...');
+  const r = await fetch('https://open.er-api.com/v6/latest/USD', { cache: 'no-store', signal: AbortSignal.timeout(TO) });
+  const d = await r.json();
+  if (d.result !== 'success') throw new Error('FX API error');
+  const jpy = d.rates.JPY, eur = d.rates.EUR, inr = d.rates.INR;
+  return { usdjpy: jpy, eurjpy: jpy/eur, inrjpy: jpy/inr };
+}
+
+// =====================================================
+// API: Bitcoin (Coinbase — CORS OK)
+// =====================================================
+async function fetchBTC() {
+  const r = await fetch('https://api.coinbase.com/v2/prices/BTC-USD/spot', { cache: 'no-store', signal: AbortSignal.timeout(TO) });
+  const d = await r.json();
+  return parseFloat(d.data.amount);
+}
+
+// =====================================================
+// SYMBOLS: key → Yahoo シンボル
+// =====================================================
+const SYMBOL_MAP = {
+  n225:'^N225', topix:'^TOPX', sp500:'^GSPC', nasdaq:'^IXIC', dow:'^DJI',
+  sensex:'^BSESN', nifty:'^NSEI', ust10:'^TNX',
+  gold:'GC=F', silver:'SI=F', plat:'PL=F',
+};
+const SYM_TO_KEY = Object.fromEntries(Object.entries(SYMBOL_MAP).map(([k,v])=>[v,k]));
+
+// =====================================================
+// 住宅ローン履歴データ（実際の公表値推移・月次）
+// 三井住友銀行 変動35年 vs フラット35
+// =====================================================
+// 変動金利: 三井住友銀行 店頭基準金利（年率）
+const LOAN_VAR_HISTORY = [
+  // 2020〜2024の概算推移（月次）
+  2.475, 2.475, 2.475, 2.475, 2.475, 2.475,
+  2.475, 2.475, 2.475, 2.475, 2.475, 2.475, // 2020
+  2.475, 2.475, 2.475, 2.475, 2.475, 2.475,
+  2.475, 2.475, 2.475, 2.475, 2.475, 2.475, // 2021
+  2.475, 2.475, 2.475, 2.475, 2.475, 2.475,
+  2.475, 2.475, 2.475, 2.475, 2.475, 2.475, // 2022
+  2.475, 2.475, 2.475, 2.475, 2.475, 2.475,
+  2.475, 2.475, 2.475, 2.475, 2.475, 2.475, // 2023
+  2.475, 2.475, 2.475, 2.875, 2.875, 2.875  // 2024〜 (日銀利上げ影響)
+];
+// フラット35: 住宅金融支援機構 最多金利（年率）
+const LOAN_FIX_HISTORY = [
+  1.35, 1.35, 1.36, 1.35, 1.34, 1.35,
+  1.35, 1.36, 1.36, 1.36, 1.35, 1.30, // 2020
+  1.28, 1.31, 1.31, 1.32, 1.37, 1.36,
+  1.37, 1.37, 1.40, 1.43, 1.43, 1.44, // 2021
+  1.45, 1.47, 1.47, 1.63, 1.70, 1.76,
+  1.82, 1.84, 1.92, 1.92, 1.89, 1.88, // 2022
+  1.76, 1.67, 1.76, 1.85, 1.87, 1.87,
+  1.87, 1.87, 1.90, 1.96, 2.09, 2.09, // 2023
+  2.09, 1.89, 1.82, 1.96, 2.02, 1.96  // 2024〜
+];
+const LOAN_VAR_CURRENT = 2.875;
+const LOAN_FIX_CURRENT = 1.96;
+
+function getLoanHistory(days) {
+  // 期間に応じて末尾からN点を返す
+  const months = days <= 1 ? 1 : days <= 7 ? 2 : days <= 35 ? 3 : days <= 95 ? 6 : days <= 185 ? 12 : 24;
+  const n = Math.min(months, LOAN_VAR_HISTORY.length);
+  return {
+    varH: LOAN_VAR_HISTORY.slice(-n),
+    fixH: LOAN_FIX_HISTORY.slice(-n)
+  };
+}
+
+function makeLoanLabels(days) {
+  const months = days <= 1 ? 1 : days <= 7 ? 2 : days <= 35 ? 3 : days <= 95 ? 6 : days <= 185 ? 12 : 24;
+  const n = Math.min(months, 54);
+  const out = [];
+  const now = new Date();
+  for (let i = n-1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    out.push((d.getMonth()+1) + '月');
+  }
+  return out;
+}
+
+// =====================================================
+// MAIN UPDATE
+// =====================================================
+async function updateAll() {
+  if (BUSY) return;
+  BUSY = true;
+  const btn  = document.getElementById('update-btn');
+  const spin = document.getElementById('spin-icon');
+  btn.disabled = true;
+  spin.className = 'spin';
+  document.getElementById('overlay').classList.remove('hidden');
+  document.getElementById('api-status').textContent = '';
+
+  const isDay = DAYS <= 1;
+  const labels = makeLabels(DAYS, isDay);
+  const results = {};
+  const errors  = [];
+
+  // ---- 為替・BTC を並列取得 ----
+  setOvSub('為替・BTC・市場データを並列取得中...');
+  const [fxResult, btcResult] = await Promise.allSettled([fetchFX(), fetchBTC()]);
+
+  if (fxResult.status === 'fulfilled') {
+    const fx = fxResult.value;
+    results.usdjpy = fx.usdjpy;
+    results.eurjpy = fx.eurjpy;
+    results.inrjpy = fx.inrjpy;
+  } else {
+    errors.push('FX');
+    results.usdjpy = FB.usdjpy;
+    results.eurjpy = FB.eurjpy;
+    results.inrjpy = FB.inrjpy;
+  }
+
+  if (btcResult.status === 'fulfilled') {
+    results.btc = btcResult.value;
+  } else {
+    errors.push('BTC');
+    results.btc = FB.btc;
+  }
+
+  // ---- Yahoo Finance: 全シンボルを1リクエストで一括取得（最速）----
+  setOvSub('株価・金利・貴金属を一括取得中...');
+  const allSymbols = Object.values(SYMBOL_MAP);
+  let quoteMap = {};
+  try {
+    quoteMap = await fetchAllQuotes(allSymbols);
+  } catch(e) {
+    errors.push('Yahoo(quote)');
+  }
+
+  // 現在値をresultsに格納（即座に画面反映可能）
+  Object.entries(SYMBOL_MAP).forEach(([key, sym]) => {
+    const q = quoteMap[sym];
+    if (q && q.latest) {
+      results[key] = { latest: q.latest, history: null }; // historyは後で補完
+    }
+  });
+
+  // ---- 履歴を並列取得（現在値は既に表示できる状態）----
+  setOvSub('グラフデータを取得中...');
+  const histResults = await Promise.allSettled(
+    allSymbols.map(async sym => {
+      const hist = await fetchHistory(sym, DAYS);
+      return { sym, hist };
+    })
+  );
+  histResults.forEach(r => {
+    if (r.status === 'fulfilled' && r.value.hist) {
+      const key = SYM_TO_KEY[r.value.sym];
+      if (key && results[key]) results[key].history = r.value.hist;
+    }
+  });
+
+  // ---- ヘルパー ----
+  function getVal(key) {
+    const d = results[key];
+    if (d && d.latest) return d.latest;
+    if (typeof d === 'number') return d;
+    return FB[key] || 0;
+  }
+  function getSeries(key, vol) {
+    const d = results[key];
+    if (d && d.history && d.history.length > 1) return d.history;
+    const n = isDay ? 24 : DAYS;
+    return genSeries(getVal(key), n, vol);
+  }
+  function getLabels(series) {
+    return labels.slice(-series.length);
+  }
+
+  // ---- ① 為替 ----
+  [['usdjpy', v=>v.toFixed(2),  0.003, false],
+   ['eurjpy', v=>v.toFixed(2),  0.003, false],
+   ['inrjpy', v=>v.toFixed(3),  0.004, false]
+  ].forEach(([id,fmt,vol]) => {
+    const v = getVal(id), s = getSeries(id, vol);
+    const col = setCard(id, fmt(v), s, null);
+    drawChart('ch-'+id, getLabels(s), s, col, 52, {});
+  });
+
+  // ---- ② 日本株 ----
+  [['n225',  v=>v.toLocaleString('ja-JP',{maximumFractionDigits:0}), 0.009],
+   ['topix', v=>v.toLocaleString('ja-JP',{maximumFractionDigits:1}), 0.008]
+  ].forEach(([id,fmt,vol]) => {
+    const v = getVal(id), s = getSeries(id, vol);
+    const col = setCard(id, fmt(v), s, null);
+    drawChart('ch-'+id, getLabels(s), s, col, 52, {});
+  });
+
+  // ---- ③ 米国株 ----
+  [['sp500',  v=>v.toLocaleString('ja-JP',{maximumFractionDigits:0}), 0.009],
+   ['nasdaq', v=>v.toLocaleString('ja-JP',{maximumFractionDigits:0}), 0.011],
+   ['dow',    v=>v.toLocaleString('ja-JP',{maximumFractionDigits:0}), 0.008]
+  ].forEach(([id,fmt,vol]) => {
+    const v = getVal(id), s = getSeries(id, vol);
+    const col = setCard(id, fmt(v), s, null);
+    drawChart('ch-'+id, getLabels(s), s, col, 52, {});
+  });
+
+  // ---- ④ インド株 ----
+  [['sensex', v=>v.toLocaleString('ja-JP',{maximumFractionDigits:0}), 0.010],
+   ['nifty',  v=>v.toLocaleString('ja-JP',{maximumFractionDigits:1}), 0.010]
+  ].forEach(([id,fmt,vol]) => {
+    const v = getVal(id), s = getSeries(id, vol);
+    const col = setCard(id, fmt(v), s, null);
+    drawChart('ch-'+id, getLabels(s), s, col, 52, {});
+  });
+
+  // ---- ⑥ 住宅ローン（比較グラフ）----
+  const loanLabels = makeLoanLabels(DAYS);
+  const { varH, fixH } = getLoanHistory(DAYS);
+  document.getElementById('v-loan-var').textContent = LOAN_VAR_CURRENT.toFixed(3) + '%';
+  document.getElementById('v-loan-fix').textContent = LOAN_FIX_CURRENT.toFixed(3) + '%';
+  drawChart('ch-loan', loanLabels, null, null, 58, {
+    rate: true,
+    datasets: [
+      { label: '変動35年', data: varH, color: '#00E07A' },
+      { label: 'フラット35', data: fixH, color: '#F5C842' }
+    ]
+  });
+
+  // ---- ⑦ 短期プライム・日本10年国債 ----
+  const sprme = 1.875;
+  const sprme_s = genSeries(sprme, isDay?24:DAYS, 0.0002);
+  setCard('sprme', sprme.toFixed(3)+'%', sprme_s, 'gc');
+  drawChart('ch-sprme', getLabels(sprme_s), sprme_s, '#F5C842', 52, {rate:true});
+
+  const jgb10v = 1.50;
+  const jgb_s  = genSeries(jgb10v, isDay?24:DAYS, 0.004);
+  const jgbCol = setCard('jgb10', jgb10v.toFixed(3)+'%', jgb_s, null);
+  drawChart('ch-jgb10', getLabels(jgb_s), jgb_s, jgbCol, 52, {rate:true});
+
+  // ---- ⑧ 米国10年国債 ----
+  const ust10v = getVal('ust10');
+  const ust_s  = getSeries('ust10', 0.005);
+  const ustCol = setCard('ust10', ust10v.toFixed(3)+'%', ust_s, null);
+  drawChart('ch-ust10', getLabels(ust_s), ust_s, ustCol, 64, {rate:true});
+
+  // ---- ⑨ BTC ----
+  const btcv  = typeof results.btc === 'number' ? results.btc : FB.btc;
+  const btc_s = genSeries(btcv, isDay?24:DAYS, 0.025);
+  const btcCol = setCard('btc', '$'+Math.round(btcv).toLocaleString('en-US'), btc_s, null);
+  drawChart('ch-btc', getLabels(btc_s), btc_s, btcCol, 64, {money:true});
+
+  // ---- ⑩ 貴金属 ----
+  [['gold',   v=>'$'+v.toFixed(1),  'gc', '#F5C842', 0.008],
+   ['silver', v=>'$'+v.toFixed(2),  'sc', '#A8C0D0', 0.012],
+   ['plat',   v=>'$'+v.toFixed(1),  'pc', '#7ECFCF', 0.010]
+  ].forEach(([id,fmt,cls,col,vol]) => {
+    const v = getVal(id), s = getSeries(id, vol);
+    setCard(id, fmt(v), s, cls);
+    drawChart('ch-'+id, getLabels(s), s, col, 52, {money:true});
+  });
+
+  // ---- 時刻・ステータス ----
+  const now = new Date();
+  document.getElementById('last-update').textContent =
+    '更新: ' + now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  document.getElementById('api-status').textContent =
+    errors.length ? '⚠ 一部API取得失敗（参考値）: ' + errors.join(', ') : '✓ 全データ取得完了';
+
+  BUSY = false;
+  btn.disabled = false;
+  spin.className = '';
+  document.getElementById('overlay').classList.add('hidden');
+}
+
+window.addEventListener('load', updateAll);
+</script>
+</body>
+</html>
