@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Market Dashboard JP</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+:root{
+  --bg:#080C18;--card:#0F1626;--card2:#162040;
+  --acc:#00C4E8;--up:#00E07A;--dn:#FF3B55;
+  --gold:#F5C842;--silver:#A8C0D0;--plat:#7ECFCF;--oil:#FF8C42;
+  --txt:#D8E4F0;--txt2:#6A85A8;--brd:#1A2E50;
+  --mono:'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,sans-serif;font-size:13px;min-height:100vh}
+#app{padding:8px;width:100%}
+
+/* iPad横向き2カラム */
+.layout-grid{display:flex;flex-direction:column}
+@media(min-width:900px)and(orientation:landscape){
+  #app{display:grid;grid-template-rows:auto auto 1fr;height:100vh;overflow:hidden}
+  .layout-grid{flex-direction:row;gap:8px;flex:1;overflow:hidden}
+  .col-left,.col-right{flex:1;overflow-y:auto;min-width:0}
+  .col-left::-webkit-scrollbar,.col-right::-webkit-scrollbar{width:3px}
+  .col-left::-webkit-scrollbar-thumb,.col-right::-webkit-scrollbar-thumb{background:var(--brd)}
+}
+
+/* HEADER */
+.hdr{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--brd);border-radius:10px;padding:8px 12px;margin-bottom:8px}
+.hdr h1{font-size:12px;font-weight:700;color:var(--acc);letter-spacing:1px}
+.hdr-r{display:flex;align-items:center;gap:6px}
+#last-update{font-size:10px;color:var(--txt2)}
+#update-btn{background:var(--acc);color:#000;border:none;padding:5px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:4px}
+#update-btn:disabled{opacity:.45;cursor:not-allowed}
+#key-btn{background:none;border:1px solid var(--brd);color:var(--txt2);padding:4px 8px;border-radius:6px;font-size:10px;cursor:pointer}
+.spin{display:inline-block;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* PERIOD */
+.pbar{display:flex;gap:5px;margin-bottom:8px;overflow-x:auto}
+.pbar::-webkit-scrollbar{display:none}
+.pbtn{flex-shrink:0;background:var(--card);border:1px solid var(--brd);color:var(--txt2);padding:4px 10px;border-radius:18px;font-size:11px;cursor:pointer}
+.pbtn.active{background:var(--acc);color:#000;border-color:var(--acc);font-weight:700}
+
+/* SECTION */
+.sec{font-size:9px;color:var(--txt2);letter-spacing:2px;text-transform:uppercase;margin:8px 0 5px 2px;font-weight:600}
+.src-live{font-size:8px;background:#0D2A1A;color:var(--up);border:1px solid #1A4A2A;border-radius:4px;padding:1px 5px;margin-left:4px}
+.src-ref{font-size:8px;background:#1A1A2A;color:var(--txt2);border:1px solid var(--brd);border-radius:4px;padding:1px 5px;margin-left:4px}
+
+/* GRIDS */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px}
+
+/* CARD */
+.card{background:var(--card);border:1px solid var(--brd);border-radius:9px;padding:7px 8px;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:9px 0 0 9px;background:var(--acc)}
+.card.up::before{background:var(--up)}.card.dn::before{background:var(--dn)}
+.card.gc::before{background:var(--gold)}.card.sc::before{background:var(--silver)}
+.card.pc::before{background:var(--plat)}.card.oc::before{background:var(--oil)}
+.cl{font-size:9px;color:var(--txt2);margin-bottom:1px}
+.cv{font-size:14px;font-weight:700;font-family:var(--mono);color:var(--txt);line-height:1.1}
+.cc{font-size:9px;margin-top:1px;font-family:var(--mono)}
+.cc.up{color:var(--up)}.cc.dn{color:var(--dn)}.cc.na{color:var(--txt2)}
+.mc{position:relative;width:100%;height:52px;margin-top:5px}
+.mc canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+
+/* WIDE CARD */
+.wcard{background:var(--card);border:1px solid var(--brd);border-radius:9px;padding:8px 10px;margin-bottom:6px;position:relative;overflow:hidden}
+.wcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:9px 0 0 9px;background:var(--acc)}
+.wcard.up::before{background:var(--up)}.wcard.dn::before{background:var(--dn)}
+.wcard.gc::before{background:var(--gold)}.wcard.oc::before{background:var(--oil)}
+.wi{display:flex;gap:8px;align-items:flex-start}
+.winfo{flex-shrink:0;min-width:85px}
+.wch{flex:1;min-width:0;position:relative;height:64px}
+.wch canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+
+/* LOAN */
+.loan-wrap{background:var(--card);border:1px solid var(--brd);border-radius:9px;padding:8px 10px;margin-bottom:6px;position:relative;overflow:hidden}
+.loan-wrap::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--gold);border-radius:9px 0 0 9px}
+.loan-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;flex-wrap:wrap;gap:4px}
+.loan-title{font-size:9px;color:var(--txt2);font-weight:600}
+.loan-vals{display:flex;gap:14px}
+.lv-item{text-align:center}
+.lv-lbl{font-size:8px;color:var(--txt2)}
+.lv-num{font-size:15px;font-weight:700;font-family:var(--mono)}
+.lv-num.var{color:var(--up)}.lv-num.fix{color:var(--gold)}
+.loan-ch{position:relative;height:58px;margin-top:4px}
+.loan-ch canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+.loan-note{font-size:8px;color:var(--txt2);margin-top:4px}
+
+/* STATUS */
+#status-bar{font-size:9px;color:var(--txt2);text-align:center;padding:3px 0 6px;min-height:14px}
+footer{text-align:center;font-size:9px;color:var(--txt2);padding:6px 0 14px}
+
+/* API KEY MODAL */
+#ak-modal{position:fixed;inset:0;background:rgba(8,12,24,.96);display:flex;align-items:center;justify-content:center;z-index:1000}
+#ak-modal.hidden{display:none}
+.ak-box{background:#0F1626;border:1px solid #1A2E50;border-radius:14px;padding:28px 24px;max-width:380px;width:90%;text-align:center}
+.ak-title{font-size:16px;font-weight:700;color:var(--acc);margin-bottom:8px}
+.ak-desc{font-size:11px;color:var(--txt2);line-height:1.7;margin-bottom:16px}
+.ak-desc a{color:var(--acc)}
+.ak-inp{width:100%;background:#162040;border:1px solid #1A2E50;border-radius:8px;padding:10px 12px;color:var(--txt);font-family:var(--mono);font-size:13px;outline:none;margin-bottom:10px;letter-spacing:1px}
+.ak-inp:focus{border-color:var(--acc)}
+.ak-btn{width:100%;background:var(--acc);color:#000;border:none;padding:10px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:8px}
+.ak-skip{font-size:10px;color:var(--txt2);cursor:pointer;text-decoration:underline}
+.ak-note{font-size:9px;color:#3A5070;margin-top:10px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<!-- API KEY MODAL -->
+<div id="ak-modal" class="hidden">
+  <div class="ak-box">
+    <div class="ak-title">🔑 Alpha Vantage APIキー設定</div>
+    <div class="ak-desc">
+      グラフに実際の過去データを表示するために<br>
+      無料のAPIキーが必要です。<br><br>
+      <a href="https://www.alphavantage.co/support/#api-key" target="_blank">▶ こちらから無料取得（1分）</a>
+    </div>
+    <input class="ak-inp" id="ak-inp" type="text" placeholder="APIキーを貼り付け" autocomplete="off" autocorrect="off" spellcheck="false">
+    <button class="ak-btn" onclick="saveKey()">保存してデータ取得開始</button>
+    <div class="ak-skip" onclick="skipKey()">今はスキップ（参考値で表示）</div>
+    <div class="ak-note">
+      ※ キーはこのブラウザ内にのみ保存されます<br>
+      ※ 無料枠: 1日500リクエスト・1分25リクエスト
+    </div>
+  </div>
+</div>
+
+<div id="app">
+  <div class="hdr">
+    <h1>📊 MARKET DASHBOARD JP</h1>
+    <div class="hdr-r">
+      <span id="last-update">未取得</span>
+      <button id="key-btn" onclick="showKeyModal()" title="APIキー設定">🔑</button>
+      <button id="update-btn" onclick="doUpdate()"><span id="si">↻</span> 更新</button>
+    </div>
+  </div>
+
+  <div class="pbar">
+    <button class="pbtn" onclick="setP(1,this)">日</button>
+    <button class="pbtn active" onclick="setP(7,this)">週</button>
+    <button class="pbtn" onclick="setP(30,this)">月</button>
+    <button class="pbtn" onclick="setP(90,this)">3ヶ月</button>
+    <button class="pbtn" onclick="setP(180,this)">6ヶ月</button>
+    <button class="pbtn" onclick="setP(365,this)">年</button>
+  </div>
+
+  <div class="layout-grid">
+    <div class="col-left">
+      <div class="sec">① 為替情報 <span class="src-live">LIVE</span></div>
+      <div class="g3">
+        <div class="card" id="card-usdjpy"><div class="cl">USD/JPY</div><div class="cv" id="v-usdjpy">---</div><div class="cc na" id="c-usdjpy">取得中</div><div class="mc"><canvas id="ch-usdjpy"></canvas></div></div>
+        <div class="card" id="card-eurjpy"><div class="cl">EUR/JPY</div><div class="cv" id="v-eurjpy">---</div><div class="cc na" id="c-eurjpy">取得中</div><div class="mc"><canvas id="ch-eurjpy"></canvas></div></div>
+        <div class="card" id="card-inrjpy"><div class="cl">INR/JPY</div><div class="cv" id="v-inrjpy">---</div><div class="cc na" id="c-inrjpy">取得中</div><div class="mc"><canvas id="ch-inrjpy"></canvas></div></div>
+      </div>
+
+      <div class="sec">② 日本株式 <span class="src-ref">参考値</span></div>
+      <div class="g2">
+        <div class="card" id="card-n225"><div class="cl">日経 225</div><div class="cv" id="v-n225">---</div><div class="cc na" id="c-n225">取得中</div><div class="mc"><canvas id="ch-n225"></canvas></div></div>
+        <div class="card" id="card-topix"><div class="cl">TOPIX</div><div class="cv" id="v-topix">---</div><div class="cc na" id="c-topix">取得中</div><div class="mc"><canvas id="ch-topix"></canvas></div></div>
+      </div>
+
+      <div class="sec">③ 米国株式 <span class="src-ref">参考値</span></div>
+      <div class="g3">
+        <div class="card" id="card-sp500"><div class="cl">S&amp;P 500</div><div class="cv" id="v-sp500">---</div><div class="cc na" id="c-sp500">取得中</div><div class="mc"><canvas id="ch-sp500"></canvas></div></div>
+        <div class="card" id="card-nasdaq"><div class="cl">NASDAQ</div><div class="cv" id="v-nasdaq">---</div><div class="cc na" id="c-nasdaq">取得中</div><div class="mc"><canvas id="ch-nasdaq"></canvas></div></div>
+        <div class="card" id="card-dow"><div class="cl">DOW</div><div class="cv" id="v-dow">---</div><div class="cc na" id="c-dow">取得中</div><div class="mc"><canvas id="ch-dow"></canvas></div></div>
+      </div>
+
+      <div class="sec">④ インド株式 <span class="src-ref">参考値</span></div>
+      <div class="g2">
+        <div class="card" id="card-sensex"><div class="cl">BSE SENSEX</div><div class="cv" id="v-sensex">---</div><div class="cc na" id="c-sensex">取得中</div><div class="mc"><canvas id="ch-sensex"></canvas></div></div>
+        <div class="card" id="card-nifty"><div class="cl">NIFTY 50</div><div class="cv" id="v-nifty">---</div><div class="cc na" id="c-nifty">取得中</div><div class="mc"><canvas id="ch-nifty"></canvas></div></div>
+      </div>
+
+      <div class="sec">⑨ ビットコイン <span class="src-live">LIVE</span></div>
+      <div class="wcard" id="card-btc">
+        <div class="wi">
+          <div class="winfo"><div class="cl">BTC/USD</div><div class="cv" id="v-btc">---</div><div class="cc na" id="c-btc">取得中</div></div>
+          <div class="wch"><canvas id="ch-btc"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-right">
+      <div class="sec">⑥ 住宅ローン金利（三井住友銀行）<span class="src-ref">参考値</span></div>
+      <div class="loan-wrap">
+        <div class="loan-hdr">
+          <div class="loan-title">変動35年 vs フラット35（固定）</div>
+          <div class="loan-vals">
+            <div class="lv-item"><div class="lv-lbl">変動35年</div><div class="lv-num var" id="v-loan-var">2.875%</div></div>
+            <div class="lv-item"><div class="lv-lbl">フラット35</div><div class="lv-num fix" id="v-loan-fix">1.820%</div></div>
+          </div>
+        </div>
+        <div class="loan-ch"><canvas id="ch-loan"></canvas></div>
+        <div class="loan-note">※ 変動: 三井住友銀行 店頭基準金利。フラット35: 住宅金融支援機構公表値。</div>
+      </div>
+
+      <div class="sec">⑦ 短期プライム / 日本10年国債 <span class="src-ref">参考値</span></div>
+      <div class="g2">
+        <div class="card gc" id="card-sprme"><div class="cl">短期プライムレート</div><div class="cv" id="v-sprme">---</div><div class="cc na" id="c-sprme">---</div><div class="mc"><canvas id="ch-sprme"></canvas></div></div>
+        <div class="card" id="card-jgb10"><div class="cl">日本10年国債</div><div class="cv" id="v-jgb10">---</div><div class="cc na" id="c-jgb10">---</div><div class="mc"><canvas id="ch-jgb10"></canvas></div></div>
+      </div>
+
+      <div class="sec">⑧ 米国10年国債 <span class="src-ref">参考値</span></div>
+      <div class="wcard" id="card-ust10">
+        <div class="wi">
+          <div class="winfo"><div class="cl">US Treasury 10Y</div><div class="cv" id="v-ust10">---</div><div class="cc na" id="c-ust10">---</div></div>
+          <div class="wch"><canvas id="ch-ust10"></canvas></div>
+        </div>
+      </div>
+
+      <div class="sec">⑩ 金・銀・プラチナ（USD/oz）<span class="src-live">LIVE</span></div>
+      <div class="g3">
+        <div class="card gc" id="card-gold"><div class="cl">金 GOLD</div><div class="cv" id="v-gold">---</div><div class="cc na" id="c-gold">取得中</div><div class="mc"><canvas id="ch-gold"></canvas></div></div>
+        <div class="card sc" id="card-silver"><div class="cl">銀 SILVER</div><div class="cv" id="v-silver">---</div><div class="cc na" id="c-silver">取得中</div><div class="mc"><canvas id="ch-silver"></canvas></div></div>
+        <div class="card pc" id="card-plat"><div class="cl">プラチナ Pt</div><div class="cv" id="v-plat">---</div><div class="cc na" id="c-plat">取得中</div><div class="mc"><canvas id="ch-plat"></canvas></div></div>
+      </div>
+
+      <div class="sec">⑪ 原油価格 <span class="src-live">LIVE</span></div>
+      <div class="g2" style="margin-bottom:6px">
+        <div class="wcard oc" id="card-wti" style="margin-bottom:0"><div class="wi"><div class="winfo"><div class="cl">WTI 原油</div><div class="cv" id="v-wti">---</div><div class="cc na" id="c-wti">取得中</div></div><div class="wch"><canvas id="ch-wti"></canvas></div></div></div>
+        <div class="wcard oc" id="card-brent" style="margin-bottom:0"><div class="wi"><div class="winfo"><div class="cl">Brent 原油</div><div class="cv" id="v-brent">---</div><div class="cc na" id="c-brent">取得中</div></div><div class="wch"><canvas id="ch-brent"></canvas></div></div></div>
+      </div>
+
+      <div id="status-bar"></div>
+      <footer>LIVE=リアルタイム / 参考値=公表値ベース（AV登録でグラフ実データ化）</footer>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ─── STATE ───────────────────────────────────────────────────
+const CI = {};       // Chart instances
+let DAYS = 7;        // 選択中の期間（日数）
+let BUSY = false;
+
+// ─── APIキー管理 ─────────────────────────────────────────────
+function getKey()  { try { return localStorage.getItem('av_key')||''; } catch(e){return '';} }
+function saveKey_() { try { localStorage.setItem('av_key', document.getElementById('ak-inp').value.trim()); } catch(e){} }
+
+function showKeyModal() {
+  document.getElementById('ak-inp').value = getKey();
+  document.getElementById('ak-modal').classList.remove('hidden');
+}
+function saveKey() {
+  const k = document.getElementById('ak-inp').value.trim();
+  if (!k) { alert('APIキーを入力してください'); return; }
+  try { localStorage.setItem('av_key', k); } catch(e){}
+  document.getElementById('ak-modal').classList.add('hidden');
+  doUpdate();
+}
+function skipKey() {
+  document.getElementById('ak-modal').classList.add('hidden');
+  doUpdate();
+}
+
+// ─── 期間切替 ─────────────────────────────────────────────────
+function setP(d, btn) {
+  DAYS = d;
+  document.querySelectorAll('.pbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  doUpdate();
+}
+
+// ─── 安全フェッチ（失敗してもnull返し） ──────────────────────
+async function sf(url, ms=7000) {
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms);
+  try {
+    const r = await fetch(url, { cache:'no-store', signal:c.signal });
+    clearTimeout(t);
+    if (!r.ok) return null;
+    return JSON.parse(await r.text());
+  } catch(e) { clearTimeout(t); return null; }
+}
+
+// ─── LIVE APIs ────────────────────────────────────────────────
+
+// 為替
+async function fetchFX() {
+  let d = await sf('https://open.er-api.com/v6/latest/USD');
+  if (d?.result==='success' && d.rates?.JPY) {
+    return { usdjpy:d.rates.JPY, eurjpy:d.rates.JPY/d.rates.EUR, inrjpy:d.rates.JPY/d.rates.INR };
+  }
+  d = await sf('https://api.frankfurter.app/latest?from=USD&to=JPY,EUR,INR');
+  if (d?.rates?.JPY) {
+    return { usdjpy:d.rates.JPY, eurjpy:d.rates.JPY/d.rates.EUR, inrjpy:d.rates.JPY/d.rates.INR };
+  }
+  return null;
+}
+
+// BTC
+async function fetchBTC() {
+  let d = await sf('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+  if (d?.bitcoin?.usd) return d.bitcoin.usd;
+  d = await sf('https://api.coinbase.com/v2/prices/BTC-USD/spot');
+  if (d?.data?.amount) return parseFloat(d.data.amount);
+  return null;
+}
+
+// 貴金属
+async function fetchMetals() {
+  const d = await sf('https://api.coingecko.com/api/v3/simple/price?ids=tether-gold,silver&vs_currencies=usd');
+  return {
+    gold:   d?.['tether-gold']?.usd || null,
+    silver: d?.['silver']?.usd      || null,
+    plat:   null
+  };
+}
+
+// 原油
+async function fetchOil() {
+  const d = await sf('https://economia.awesomeapi.com.br/json/last/OIL-USD');
+  if (!d) return { wti:null, brent:null };
+  const key = Object.keys(d)[0];
+  const wti = parseFloat(d[key]?.bid||d[key]?.ask||0)||null;
+  return { wti, brent: wti ? +(wti+3).toFixed(2) : null };
+}
+
+// Alpha Vantage 為替履歴
+async function fetchAVFX(from, to) {
+  const k = getKey(); if (!k) return null;
+  const d = await sf(`https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=${from}&to_symbol=${to}&outputsize=compact&apikey=${k}`, 10000);
+  const ts = d?.['Time Series FX (Daily)'];
+  if (!ts) return null;
+  return Object.keys(ts).sort().map(dt => parseFloat(ts[dt]['4. close']));
+}
+
+// Alpha Vantage 株価ETF履歴
+async function fetchAVStock(symbol) {
+  const k = getKey(); if (!k) return null;
+  const d = await sf(`https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol=${symbol}&outputsize=compact&apikey=${k}`, 10000);
+  const ts = d?.['Time Series (Daily)'];
+  if (!ts) return null;
+  return Object.keys(ts).sort().map(dt => parseFloat(ts[dt]['4. close']));
+}
+
+function sliceH(arr, days) {
+  if (!arr?.length) return null;
+  const pts = days <= 7 ? 7 : days <= 30 ? 30 : days <= 90 ? 90 : days <= 180 ? 180 : 365;
+  return arr.slice(-pts);
+}
+
+// ─── 参考値（2026年6月実際値）─────────────────────────────────
+const REF = {
+  n225:   { v:69500, h:[57000,60000,62000,64500,61000,63000,66000,68000,67000,68500,69200,69500] },
+  topix:  { v:4000,  h:[2800,2950,3100,3300,3150,3300,3550,3750,3700,3850,3970,4000] },
+  sp500:  { v:7370,  h:[5800,6000,6200,6500,6300,6600,6900,7100,7000,7200,7360,7370] },
+  nasdaq: { v:25400, h:[19000,19800,20500,21500,20800,21500,22500,23800,24000,25000,25450,25400] },
+  dow:    { v:51900, h:[43000,44500,46000,47500,46000,47500,49000,50500,50000,51000,51800,51900] },
+  sensex: { v:77100, h:[68000,69000,70000,71000,70000,71000,72000,74000,73000,75000,76500,77100] },
+  nifty:  { v:24070, h:[21000,21500,22000,22500,22000,22500,23000,23500,23200,23600,23900,24070] },
+  sprme:  { v:1.875, h:[0.475,0.475,0.875,0.875,0.875,0.875,1.375,1.375,1.875,1.875,1.875,1.875] },
+  jgb10:  { v:1.530, h:[1.00,1.05,1.10,1.20,1.25,1.30,1.35,1.40,1.45,1.48,1.51,1.530] },
+  ust10:  { v:4.407, h:[3.90,4.00,4.10,4.20,4.15,4.25,4.30,4.40,4.35,4.38,4.39,4.407] },
+};
+const LOAN_VAR_H = [2.475,2.475,2.475,2.475,2.475,2.475,2.475,2.475,2.475,2.475,2.875,2.875,2.875,2.875,2.875,2.875,2.875,2.875,2.875,2.875,2.875,2.875,2.875,2.875];
+const LOAN_FIX_H = [1.35,1.35,1.36,1.63,1.76,1.88,1.88,1.76,1.87,1.96,2.09,2.09,1.89,1.82,1.96,2.02,1.96,1.89,1.85,1.82,1.80,1.79,1.80,1.82];
+
+// ETFシンボル
+const AV_SYM = { n225:'EWJ', topix:'EWJ', sp500:'SPY', nasdaq:'QQQ', dow:'DIA', sensex:'INDA', nifty:'INDY' };
+
+// ─── グラフ描画 ───────────────────────────────────────────────
+function mkLabels(n) {
+  const now = new Date(), out = [];
+  for (let i=n-1; i>=0; i--) {
+    const d = new Date(now); d.setDate(d.getDate()-i);
+    out.push((d.getMonth()+1)+'/'+(d.getDate()));
+  }
+  return out;
+}
+function mkMonthLabels(n) {
+  const now = new Date(), out = [];
+  for (let i=n-1; i>=0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+    out.push((d.getMonth()+1)+'月');
+  }
+  return out;
+}
+
+function drawChart(id, labels, data, color, h, opts={}) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+  if (!data && !opts.datasets) return;
+
+  const ctx = canvas.getContext('2d');
+  const sc = color || '#00C4E8';
+  const grad = ctx.createLinearGradient(0,0,0,h||52);
+  grad.addColorStop(0, sc+'55'); grad.addColorStop(1, sc+'05');
+
+  const isMulti = !!opts.datasets;
+  const datasets = isMulti
+    ? opts.datasets.map(ds=>({ label:ds.label, data:ds.data, borderColor:ds.color, borderWidth:2, pointRadius:0, fill:false, tension:0.4 }))
+    : [{ data, borderColor:sc, borderWidth:2, pointRadius:0, fill:true, backgroundColor:grad, tension:0.4 }];
+
+  const allVals = (isMulti ? opts.datasets.flatMap(d=>d.data) : data).filter(v=>isFinite(v));
+  if (!allVals.length) return;
+  const mn = Math.min(...allVals), mx = Math.max(...allVals);
+  const pad = mn===mx ? Math.abs(mn)*0.01+0.01 : 0;
+
+  // ツールチップ
+  const ttip = {
+    enabled:true, mode:'index', intersect:false,
+    backgroundColor:'rgba(4,8,20,0.97)',
+    titleColor:'#00C4E8', bodyColor:'#FFFFFF',
+    borderColor:'#00C4E8', borderWidth:1.5,
+    padding:{top:8,bottom:8,left:12,right:12},
+    cornerRadius:8, displayColors:false,
+    titleFont:{family:'-apple-system,sans-serif',size:12,weight:'600'},
+    bodyFont:{family:"'Courier New',monospace",size:16,weight:'700'},
+    callbacks:{
+      title: items => items[0]?.label||'',
+      label: item => {
+        const v = Number(item.raw);
+        const name = item.dataset.label ? item.dataset.label+'  ' : '';
+        if (opts.rate)  return name + v.toFixed(3) + ' %';
+        if (opts.money) return name + '$ ' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+        return name + v.toLocaleString('ja-JP',{maximumFractionDigits:2});
+      }
+    }
+  };
+
+  CI[id] = new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets },
+    options:{
+      responsive:false, animation:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{
+        legend: isMulti ? {display:true,position:'top',labels:{color:'#6A85A8',font:{size:9},boxWidth:12,padding:5}} : {display:false},
+        tooltip: ttip
+      },
+      scales:{ x:{display:false}, y:{display:false, min:(mn-pad)*0.995, max:(mx+pad)*1.005} }
+    }
+  });
+}
+
+// ─── カード更新ヘルパー ───────────────────────────────────────
+function setCard(id, val, change, cls) {
+  const card = document.getElementById('card-'+id);
+  if (card) { ['up','dn','gc','sc','pc','oc'].forEach(c=>card.classList.remove(c)); if(cls) card.classList.add(cls); }
+  const ve = document.getElementById('v-'+id); if(ve) ve.textContent = val;
+  const ce = document.getElementById('c-'+id);
+  if (ce) {
+    ce.textContent = change.text;
+    ce.className = 'cc ' + (change.cls||'na');
+    ce.style.color = '';
+  }
+}
+
+function setCardSeries(id, valStr, series, colorCls, opts={}) {
+  const first=series[0]||1, last=series[series.length-1]||0;
+  const diff=last-first, pct=(diff/first)*100, isUp=diff>=0;
+  const ad=Math.abs(diff);
+  const ds = ad<0.01?ad.toFixed(4):ad<10?ad.toFixed(3):ad<1000?ad.toFixed(2):Math.round(ad).toLocaleString();
+  setCard(id, valStr, {
+    text: (isUp?'+':'-')+ds+' ('+(isUp?'+':'')+pct.toFixed(2)+'%)',
+    cls: isUp?'up':'dn'
+  }, colorCls||(isUp?'up':'dn'));
+  return isUp?'#00E07A':'#FF3B55';
+}
+
+// ─── 各セクション描画 ─────────────────────────────────────────
+
+function drawFX(live) {
+  const FB = {usdjpy:161.7, eurjpy:182.0, inrjpy:1.93};
+  [['usdjpy','USD/JPY',v=>v.toFixed(2)],
+   ['eurjpy','EUR/JPY',v=>v.toFixed(2)],
+   ['inrjpy','INR/JPY',v=>v.toFixed(3)]
+  ].forEach(([id,lbl,fmt])=>{
+    const val = (live[id]>0 && isFinite(live[id])) ? live[id] : FB[id];
+    const hist = live['h_'+id];
+    if (hist?.length>=2) {
+      const col = setCardSeries(id, fmt(val), hist);
+      drawChart('ch-'+id, mkLabels(hist.length), hist, col, 52, {label:lbl});
+    } else {
+      setCard(id, fmt(val),
+        live[id] ? {text:'リアルタイム値',cls:'up'} : {text:'グラフ:AV登録後',cls:'na'},
+        live[id]?'up':'ac');
+      if (CI['ch-'+id]) { CI['ch-'+id]?.destroy(); delete CI['ch-'+id]; }
+    }
+  });
+}
+
+function drawStocks(live) {
+  const items = [
+    ['n225',  v=>v.toLocaleString('ja-JP',{maximumFractionDigits:0}),'日経225'],
+    ['topix', v=>v.toLocaleString('ja-JP',{maximumFractionDigits:1}),'TOPIX'],
+    ['sp500', v=>v.toLocaleString('en-US',{maximumFractionDigits:0}),'S&P500'],
+    ['nasdaq',v=>v.toLocaleString('en-US',{maximumFractionDigits:0}),'NASDAQ'],
+    ['dow',   v=>v.toLocaleString('en-US',{maximumFractionDigits:0}),'DOW'],
+    ['sensex',v=>v.toLocaleString('en-IN',{maximumFractionDigits:0}),'SENSEX'],
+    ['nifty', v=>v.toLocaleString('en-IN',{maximumFractionDigits:1}),'NIFTY50'],
+  ];
+  items.forEach(([id,fmt,lbl])=>{
+    const val = REF[id].v;
+    const hist = live['h_'+id];
+    if (hist?.length>=2) {
+      const col = setCardSeries(id, fmt(val), hist);
+      drawChart('ch-'+id, mkLabels(hist.length), hist, col, 52, {label:lbl});
+    } else {
+      // 参考値グラフ（REFのh配列を使用）
+      const rh = REF[id].h;
+      const col = setCardSeries(id, fmt(val), rh);
+      drawChart('ch-'+id, mkMonthLabels(rh.length), rh, col, 52, {label:lbl});
+    }
+  });
+}
+
+function drawRates(live) {
+  // 住宅ローン
+  const ln = Math.min(DAYS<=7?4:DAYS<=35?6:DAYS<=95?12:24, LOAN_VAR_H.length);
+  drawChart('ch-loan', mkMonthLabels(ln), null, null, 58, {
+    rate:true,
+    datasets:[
+      {label:'変動35年',  data:LOAN_VAR_H.slice(-ln), color:'#00E07A'},
+      {label:'フラット35',data:LOAN_FIX_H.slice(-ln), color:'#F5C842'}
+    ]
+  });
+  // 短期プライム
+  const sh = REF.sprme.h;
+  setCardSeries('sprme', REF.sprme.v.toFixed(3)+'%', sh, 'gc');
+  drawChart('ch-sprme', mkMonthLabels(sh.length), sh, '#F5C842', 52, {rate:true, label:'短期プライム'});
+  // 日本10年国債
+  const jh = REF.jgb10.h;
+  const jc = setCardSeries('jgb10', REF.jgb10.v.toFixed(3)+'%', jh);
+  drawChart('ch-jgb10', mkMonthLabels(jh.length), jh, jc, 52, {rate:true, label:'日本10年国債'});
+  // 米国10年国債
+  const uh = REF.ust10.h;
+  const uc = setCardSeries('ust10', REF.ust10.v.toFixed(3)+'%', uh);
+  drawChart('ch-ust10', mkMonthLabels(uh.length), uh, uc, 64, {rate:true, label:'US10年国債'});
+}
+
+function drawBTC(live) {
+  const v = live.btc;
+  if (v && isFinite(v)) {
+    setCard('btc','$'+Math.round(v).toLocaleString('en-US'),{text:'リアルタイム値',cls:'up'},'up');
+  } else {
+    setCard('btc','---',{text:'取得失敗',cls:'na'},'ac');
+  }
+}
+
+function drawMetals(live) {
+  [['gold','$','gc','#F5C842',v=>'$'+v.toFixed(1)],
+   ['silver','$','sc','#A8C0D0',v=>'$'+v.toFixed(2)],
+   ['plat','$','pc','#7ECFCF',v=>'$'+v.toFixed(1)]
+  ].forEach(([id,,cls,col,fmt])=>{
+    const v=live[id];
+    if (v && isFinite(v)) {
+      setCard(id,fmt(v),{text:'リアルタイム値',cls:'up'},cls);
+    } else {
+      setCard(id,'---',{text:'取得失敗',cls:'na'},cls);
+    }
+  });
+}
+
+function drawOil(live) {
+  [['wti','#FF8C42'],['brent','#FFB347']].forEach(([id,col])=>{
+    const v=live[id];
+    if (v && isFinite(v)) {
+      setCard(id,'$'+v.toFixed(2),{text:'リアルタイム値',cls:'up'},'oc');
+    } else {
+      setCard(id,'---',{text:'取得失敗',cls:'na'},'oc');
+    }
+  });
+}
+
+// ─── ステータス更新 ───────────────────────────────────────────
+function setStatus(msg) {
+  const el = document.getElementById('status-bar');
+  if(el) el.textContent = msg;
+}
+
+// ─── メイン更新（シンプル直列版） ────────────────────────────
+async function doUpdate() {
+  if (BUSY) return;
+  BUSY = true;
+
+  // ボタン操作
+  document.getElementById('update-btn').disabled = true;
+  document.getElementById('si').className = 'spin';
+  setStatus('⟳ データ取得中...');
+
+  const live = {};
+
+  try {
+    // STEP1: 参考値をすぐ表示（即座に画面に出す）
+    drawStocks(live);
+    drawRates(live);
+    drawBTC(live);
+    drawMetals(live);
+    drawOil(live);
+
+    // STEP2: LIVE APIs を並列取得
+    setStatus('⟳ LIVE データ取得中...');
+    const [fxR, btcR, metR, oilR] = await Promise.allSettled([
+      fetchFX(), fetchBTC(), fetchMetals(), fetchOil()
+    ]);
+
+    // 結果を live に格納
+    if (fxR.status==='fulfilled' && fxR.value) Object.assign(live, fxR.value);
+    if (btcR.status==='fulfilled' && isFinite(btcR.value)) live.btc = btcR.value;
+    if (metR.status==='fulfilled') Object.assign(live, metR.value);
+    if (oilR.status==='fulfilled') Object.assign(live, oilR.value);
+
+    // LIVE結果を画面に反映
+    drawFX(live);
+    drawBTC(live);
+    drawMetals(live);
+    drawOil(live);
+
+    const ok = [];
+    if (fxR.status==='fulfilled' && fxR.value)  ok.push('為替');
+    if (btcR.status==='fulfilled')  ok.push('BTC');
+    if (metR.status==='fulfilled' && (live.gold||live.silver)) ok.push('貴金属');
+    if (oilR.status==='fulfilled' && (live.wti||live.brent))   ok.push('原油');
+    setStatus('✓ LIVE: '+ok.join('・'));
+
+    // STEP3: Alpha Vantage（キーあり時のみ）
+    const avKey = getKey();
+    if (avKey) {
+      setStatus('⟳ グラフデータ取得中 (Alpha Vantage)...');
+
+      // 為替履歴 (3本並列)
+      const [uvR, evR, ivR] = await Promise.allSettled([
+        fetchAVFX('USD','JPY'),
+        fetchAVFX('EUR','JPY'),
+        fetchAVFX('INR','JPY'),
+      ]);
+      if (uvR.value) live.h_usdjpy = sliceH(uvR.value, DAYS);
+      if (evR.value) live.h_eurjpy = sliceH(evR.value, DAYS);
+      if (ivR.value) live.h_inrjpy = sliceH(ivR.value, DAYS);
+      drawFX(live);
+
+      // 株価ETF (7本並列)
+      const keys = Object.keys(AV_SYM);
+      const sRes = await Promise.allSettled(keys.map(k => fetchAVStock(AV_SYM[k])));
+      keys.forEach((k,i) => { if(sRes[i].value) live['h_'+k] = sliceH(sRes[i].value, DAYS); });
+      drawStocks(live);
+
+      ok.push('📈グラフ');
+      setStatus('✓ '+ok.join('・'));
+    }
+
+  } catch(e) {
+    console.error('doUpdate error:', e);
+    setStatus('⚠ エラー発生 - 一部データ取得失敗');
+  }
+
+  // 必ずここに到達してBUSY解除
+  const now = new Date();
+  document.getElementById('last-update').textContent =
+    '更新: '+now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+  document.getElementById('update-btn').disabled = false;
+  document.getElementById('si').className = '';
+  BUSY = false;
+}
+
+// ─── 起動 ─────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  if (!getKey()) {
+    showKeyModal();
+  } else {
+    doUpdate();
+  }
+});
+</script>
+</body>
+</html>
