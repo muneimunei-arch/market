@@ -297,30 +297,50 @@ async function fetchFX() {
 
 // BTC
 async function fetchBTC() {
-  let d = await sf('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
+  // 試行1: gold-api.com（キー不要・CORS対応）
+  let d = await sf('https://api.gold-api.com/price/BTC');
+  if (d?.price && isFinite(d.price)) return d.price;
+  // 試行2: CoinGecko
+  d = await sf('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd');
   if (d?.bitcoin?.usd) return d.bitcoin.usd;
+  // 試行3: Coinbase
   d = await sf('https://api.coinbase.com/v2/prices/BTC-USD/spot');
   if (d?.data?.amount) return parseFloat(d.data.amount);
   return null;
 }
 
-// 貴金属
+// 貴金属（gold-api.com — キー不要・CORS対応・無料）
 async function fetchMetals() {
-  const d = await sf('https://api.coingecko.com/api/v3/simple/price?ids=tether-gold,silver&vs_currencies=usd');
+  const [gR, sR, pR] = await Promise.allSettled([
+    sf('https://api.gold-api.com/price/XAU'),  // 金
+    sf('https://api.gold-api.com/price/XAG'),  // 銀
+    sf('https://api.gold-api.com/price/XPT'),  // プラチナ
+  ]);
   return {
-    gold:   d?.['tether-gold']?.usd || null,
-    silver: d?.['silver']?.usd      || null,
-    plat:   null
+    gold:   gR.status==='fulfilled' && gR.value?.price ? gR.value.price : null,
+    silver: sR.status==='fulfilled' && sR.value?.price ? sR.value.price : null,
+    plat:   pR.status==='fulfilled' && pR.value?.price ? pR.value.price : null,
   };
 }
 
-// 原油
+// 原油（gold-api.com — WTI原油 = USOIL、Brent = UKOIL）
 async function fetchOil() {
-  const d = await sf('https://economia.awesomeapi.com.br/json/last/OIL-USD');
-  if (!d) return { wti:null, brent:null };
-  const key = Object.keys(d)[0];
-  const wti = parseFloat(d[key]?.bid||d[key]?.ask||0)||null;
-  return { wti, brent: wti ? +(wti+3).toFixed(2) : null };
+  const [wR, bR] = await Promise.allSettled([
+    sf('https://api.gold-api.com/price/USOIL'),
+    sf('https://api.gold-api.com/price/UKOIL'),
+  ]);
+  const wti   = wR.status==='fulfilled' && wR.value?.price ? wR.value.price : null;
+  const brent = bR.status==='fulfilled' && bR.value?.price ? bR.value.price : null;
+  // gold-api が原油に対応していない場合のフォールバック
+  if (!wti && !brent) {
+    const d = await sf('https://economia.awesomeapi.com.br/json/last/OIL-USD');
+    if (d) {
+      const key = Object.keys(d)[0];
+      const w = parseFloat(d[key]?.bid||d[key]?.ask||0)||null;
+      return { wti:w, brent: w ? +(w+3).toFixed(2) : null };
+    }
+  }
+  return { wti, brent };
 }
 
 // Alpha Vantage 為替履歴
@@ -503,13 +523,17 @@ function drawStocks(live) {
     const val = REF[id].v;
     const hist = live['h_'+id];
     if (hist?.length>=2) {
+      // Alpha Vantage 実データ
       const col = setCardSeries(id, fmt(val), hist);
       drawChart('ch-'+id, mkLabels(hist.length), hist, col, 52, {label:lbl});
     } else {
-      // 参考値グラフ（REFのh配列を使用）
+      // 参考値グラフ: DAYS に合わせてスライス（最低2点）
       const rh = REF[id].h;
-      const col = setCardSeries(id, fmt(val), rh);
-      drawChart('ch-'+id, mkMonthLabels(rh.length), rh, col, 52, {label:lbl});
+      // DAYS が小さいほど末尾の少ない点数だけ使う
+      const pts = DAYS<=7 ? 2 : DAYS<=30 ? 3 : DAYS<=90 ? 5 : DAYS<=180 ? 8 : rh.length;
+      const slice = rh.slice(-Math.max(2, pts));
+      const col = setCardSeries(id, fmt(val), slice);
+      drawChart('ch-'+id, mkMonthLabels(slice.length), slice, col, 52, {label:lbl});
     }
   });
 }
