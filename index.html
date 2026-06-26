@@ -603,47 +603,83 @@ function drawStocks(live) {
     ['nifty', v=>v.toLocaleString('en-IN',{maximumFractionDigits:1}),'NIFTY50'],
   ];
   items.forEach(([id,fmt,lbl])=>{
-    const val = REF[id].v;
-    const avHist = live['h_'+id];
+    const val    = REF[id].v;
+    const avHist = live['h_'+id]; // Alpha Vantage実データ
 
-    let series, labels;
-    if (avHist?.length>=2) {
-      series = avHist;
-      labels = mkPeriodLabels(series.length);
+    if (avHist?.length >= 2) {
+      // ── AVデータあり: 正確なグラフを表示 ──
+      const col = setCardSeries(id, fmt(val), avHist);
+      drawChart('ch-'+id, mkLabels(avHist.length), avHist, col, 52, {label:lbl});
     } else {
-      const rh = REF[id].h;
-      const pts = DAYS<=1?2 : DAYS<=7?2 : DAYS<=30?3 : DAYS<=90?5 : DAYS<=180?8 : rh.length;
-      series = rh.slice(-Math.max(2,pts));
-      labels = mkMonthLabels(series.length);
+      // ── AVデータなし: 値のみ表示、グラフなし ──
+      // 「日」選択 → 日中データ取得不可
+      // 「週/月/年」→ AVキー登録後にグラフ表示
+      const msg = DAYS <= 1
+        ? '日中データ取得には証券APIが必要です'
+        : 'グラフはAVキー登録後に表示';
+      setCard(id, fmt(val), {text: msg, cls:'na'}, 'up');
+      // グラフをクリア
+      if (CI[id]) { CI[id].destroy(); delete CI[id]; }
     }
-
-    const col = setCardSeries(id, fmt(val), series);
-    drawChart('ch-'+id, labels, series, col, 52, {label:lbl});
   });
 }
 
 function drawRates(live) {
-  // 住宅ローン
-  const ln = Math.min(DAYS<=7?4:DAYS<=35?6:DAYS<=95?12:24, LOAN_VAR_H.length);
-  drawChart('ch-loan', mkMonthLabels(ln), null, null, 58, {
-    rate:true,
-    datasets:[
-      {label:'変動35年',  data:LOAN_VAR_H.slice(-ln), color:'#00E07A'},
-      {label:'フラット35',data:LOAN_FIX_H.slice(-ln), color:'#F5C842'}
-    ]
-  });
-  // 短期プライム
-  const sh = REF.sprme.h;
-  setCardSeries('sprme', REF.sprme.v.toFixed(3)+'%', sh, 'gc');
-  drawChart('ch-sprme', mkMonthLabels(sh.length), sh, '#F5C842', 52, {rate:true, label:'短期プライム'});
-  // 日本10年国債
-  const jh = REF.jgb10.h;
-  const jc = setCardSeries('jgb10', REF.jgb10.v.toFixed(3)+'%', jh);
-  drawChart('ch-jgb10', mkMonthLabels(jh.length), jh, jc, 52, {rate:true, label:'日本10年国債'});
-  // 米国10年国債
-  const uh = REF.ust10.h;
-  const uc = setCardSeries('ust10', REF.ust10.v.toFixed(3)+'%', uh);
-  drawChart('ch-ust10', mkMonthLabels(uh.length), uh, uc, 64, {rate:true, label:'US10年国債'});
+  // ── 住宅ローン: 月次公表値データあり → 期間に応じて表示 ──
+  // 「日」のみグラフなし（日中変動なし）
+  if (DAYS <= 1) {
+    // 値だけ表示
+    document.getElementById('v-loan-var').textContent = '2.875%';
+    document.getElementById('v-loan-fix').textContent = '1.820%';
+    if (CI['ch-loan']) { CI['ch-loan'].destroy(); delete CI['ch-loan']; }
+  } else {
+    const ln = Math.min(DAYS<=7?4 : DAYS<=35?6 : DAYS<=95?12 : 24, LOAN_VAR_H.length);
+    document.getElementById('v-loan-var').textContent = '2.875%';
+    document.getElementById('v-loan-fix').textContent = '1.820%';
+    drawChart('ch-loan', mkMonthLabels(ln), null, null, 58, {
+      rate:true,
+      datasets:[
+        {label:'変動35年',  data:LOAN_VAR_H.slice(-ln), color:'#00E07A'},
+        {label:'フラット35',data:LOAN_FIX_H.slice(-ln), color:'#F5C842'}
+      ]
+    });
+  }
+
+  // ── 短期プライム: 公表値月次データあり ──
+  if (DAYS <= 1) {
+    setCard('sprme', REF.sprme.v.toFixed(3)+'%', {text:'日中変動なし（月次データ）',cls:'na'}, 'gc');
+    if (CI['ch-sprme']) { CI['ch-sprme'].destroy(); delete CI['ch-sprme']; }
+  } else {
+    const sh = REF.sprme.h;
+    const pts = DAYS<=7?3 : DAYS<=30?4 : DAYS<=90?6 : DAYS<=180?9 : sh.length;
+    const sl = sh.slice(-Math.max(2,pts));
+    setCardSeries('sprme', REF.sprme.v.toFixed(3)+'%', sl, 'gc');
+    drawChart('ch-sprme', mkMonthLabels(sl.length), sl, '#F5C842', 52, {rate:true, label:'短期プライム'});
+  }
+
+  // ── 日本10年国債 ──
+  if (DAYS <= 1) {
+    setCard('jgb10', REF.jgb10.v.toFixed(3)+'%', {text:'日中データなし（参考値）',cls:'na'}, 'up');
+    if (CI['ch-jgb10']) { CI['ch-jgb10'].destroy(); delete CI['ch-jgb10']; }
+  } else {
+    const jh = REF.jgb10.h;
+    const pts = DAYS<=7?3 : DAYS<=30?4 : DAYS<=90?6 : DAYS<=180?9 : jh.length;
+    const jl = jh.slice(-Math.max(2,pts));
+    const jc = setCardSeries('jgb10', REF.jgb10.v.toFixed(3)+'%', jl);
+    drawChart('ch-jgb10', mkMonthLabels(jl.length), jl, jc, 52, {rate:true, label:'日本10年国債'});
+  }
+
+  // ── 米国10年国債 ──
+  if (DAYS <= 1) {
+    setCard('ust10', REF.ust10.v.toFixed(3)+'%', {text:'日中データなし（参考値）',cls:'na'}, 'up');
+    if (CI['ch-ust10']) { CI['ch-ust10'].destroy(); delete CI['ch-ust10']; }
+  } else {
+    const uh = REF.ust10.h;
+    const pts = DAYS<=7?3 : DAYS<=30?4 : DAYS<=90?6 : DAYS<=180?9 : uh.length;
+    const ul = uh.slice(-Math.max(2,pts));
+    const uc = setCardSeries('ust10', REF.ust10.v.toFixed(3)+'%', ul);
+    drawChart('ch-ust10', mkMonthLabels(ul.length), ul, uc, 64, {rate:true, label:'US10年国債'});
+  }
 }
 
 function drawBTC(live) {
