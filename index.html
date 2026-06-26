@@ -147,6 +147,10 @@ footer{text-align:center;font-size:9px;color:var(--txt2);padding:6px 0 14px}
     <button class="pbtn" onclick="setP(90,this)">3ヶ月</button>
     <button class="pbtn" onclick="setP(180,this)">6ヶ月</button>
     <button class="pbtn" onclick="setP(365,this)">年</button>
+    <button class="pbtn" onclick="setP(3650,this)">10年</button>
+    <button class="pbtn" onclick="setP(7300,this)">20年</button>
+    <button class="pbtn" onclick="setP(10950,this)">30年</button>
+    <button class="pbtn" onclick="setP(36500,this)">100年</button>
   </div>
 
   <div class="layout-grid">
@@ -387,15 +391,106 @@ const LOAN_FIX_H = [1.35,1.35,1.36,1.63,1.76,1.88,1.88,1.76,1.87,1.96,2.09,2.09,
 // ETFシンボル
 const AV_SYM = { n225:'EWJ', topix:'EWJ', sp500:'SPY', nasdaq:'QQQ', dow:'DIA', sensex:'INDA', nifty:'INDY' };
 
-// 為替参考値履歴（直近12ヶ月、月次）
 const FX_REF = {
-  // USD/JPY 2025年7月〜2026年6月（月次終値概算）
-  usdjpy: [146.0, 148.5, 151.0, 153.5, 152.0, 155.0, 158.0, 156.0, 154.0, 158.0, 160.0, 161.8],
-  // EUR/JPY 月次概算
-  eurjpy: [161.0, 164.0, 167.0, 170.0, 169.0, 172.0, 175.0, 174.0, 172.0, 176.0, 180.0, 183.8],
-  // INR/JPY 月次概算
-  inrjpy: [1.74, 1.76, 1.78, 1.80, 1.79, 1.81, 1.84, 1.83, 1.82, 1.85, 1.88, 1.91],
+  usdjpy: [146.0,148.5,151.0,153.5,152.0,155.0,158.0,156.0,154.0,158.0,160.0,161.8],
+  eurjpy: [161.0,164.0,167.0,170.0,169.0,172.0,175.0,174.0,172.0,176.0,180.0,183.8],
+  inrjpy: [1.74,1.76,1.78,1.80,1.79,1.81,1.84,1.83,1.82,1.85,1.88,1.91],
 };
+
+// ── 長期年次データ（年足）左=過去、右=現在=2026年 ──
+const LONG_USDJPY = {
+  y10:  [121.0,116.0,112.0,110.0,109.0,103.0,115.0,131.0,141.0,157.0,161.8],
+  y20:  [108.0,117.0,103.0,93.0,88.0,80.0,79.0,97.0,120.0,121.0,116.0,112.0,110.0,109.0,103.0,115.0,131.0,141.0,157.0,161.8],
+  y30:  [104.0,121.0,131.0,113.0,102.0,108.0,117.0,103.0,93.0,88.0,80.0,79.0,97.0,120.0,121.0,116.0,112.0,110.0,109.0,103.0,115.0,131.0,141.0,157.0,161.8],
+  y100: [2.0,4.3,3.7,4.3,360.0,360.0,360.0,360.0,308.0,220.0,238.0,145.0,94.0,130.0,102.0,108.0,80.0,79.0,97.0,120.0,109.0,103.0,115.0,131.0,141.0,157.0,161.8],
+};
+const LONG_N225 = {
+  y10:  [19000,19115,22765,20014,23656,27444,28791,26094,33464,39894,69500],
+  y20:  [16205,17225,15307,10546,10228,8455,9755,16291,17450,19033,19000,19115,22765,20014,23656,27444,28791,26094,33464,39894,69500],
+  y30:  [15917,19361,13842,13785,11542,10542,8578,11488,12525,14562,16205,17225,15307,10546,10228,8455,9755,16291,17450,19033,19000,19115,22765,20014,23656,27444,28791,26094,33464,39894,69500],
+  y100: [110,350,900,1200,1800,2400,5000,8800,15000,38915,14500,8600,11488,16205,8455,16291,19033,19000,22765,27444,39894,69500],
+};
+const LONG_TOPIX = {
+  y10:  [1518,1817,1817,1721,1804,1992,1891,2043,2366,2788,4000],
+  y20:  [1049,1133,1407,1547,1518,1817,1817,1721,1804,1992,1891,2043,2366,2788,4000],
+  y30:  [1600,1470,1280,1049,1133,1407,1547,1518,1817,1817,1721,1804,1992,1891,2043,2366,2788,4000],
+  y100: [100,200,400,800,2886,800,1049,1547,1992,2366,4000],
+};
+const LONG_SP500 = {
+  y10:  [2239,2673,2507,3231,3756,4766,3840,4770,5157,5882,7370],
+  y20:  [1248,1418,903,1115,1258,1426,1848,2239,2673,2507,3231,3756,4766,3840,4770,5157,5882,7370],
+  y30:  [740,786,970,1229,1469,1248,1418,903,1115,1258,1426,1848,2239,2673,2507,3231,3756,4766,3840,4770,5157,5882,7370],
+  y100: [18,11,18,84,93,96,167,352,436,617,740,1248,903,1258,2239,3756,3840,5157,7370],
+};
+const LONG_NASDAQ = {
+  y10:  [5007,6903,6635,9150,12888,15645,10939,14765,16542,19310,25400],
+  y20:  [2652,3018,2012,3019,4177,5007,6903,6635,9150,12888,15645,10939,14765,16542,19310,25400],
+  y30:  [1200,1291,2192,4069,2471,1335,2652,3018,2012,3019,4177,5007,6903,6635,9150,12888,15645,10939,14765,16542,19310,25400],
+  y100: [100,200,400,2471,1335,2652,3018,4069,12888,15645,10939,19310,25400],
+};
+const LONG_DOW = {
+  y10:  [19827,24719,23327,28538,30606,36338,33147,37689,42544,43000,51900],
+  y20:  [10718,13264,8776,10428,11577,12218,13104,17425,19827,24719,23327,28538,30606,36338,33147,37689,42544,43000,51900],
+  y30:  [5117,6448,7908,11497,10786,10718,13264,8776,10428,11577,12218,13104,17425,19827,24719,23327,28538,30606,36338,33147,37689,42544,43000,51900],
+  y100: [95,64,150,900,2753,1000,5117,11497,10786,8776,17425,24719,36338,33147,42544,51900],
+};
+const LONG_GOLD = {
+  y10:  [1062,1309,1303,1282,1523,1898,1830,1943,2063,2625,4010],
+  y20:  [445,603,696,833,975,872,1421,1531,1266,1062,1309,1303,1282,1523,1898,1830,1943,2063,2625,4010],
+  y30:  [387,331,288,279,345,445,603,696,833,975,872,1421,1531,1266,1062,1309,1303,1282,1523,1898,1830,1943,2063,2625,4010],
+  y100: [35,35,35,35,42,175,460,387,288,279,445,975,1421,1266,1062,1523,1898,2063,2625,4010],
+};
+const LONG_SILVER = {
+  y10:  [13.9,17.2,15.5,18.1,26.4,23.3,22.1,24.5,28.9,32.1,56.7],
+  y20:  [4.4,6.7,8.9,11.6,14.6,13.9,17.2,15.5,18.1,26.4,23.3,22.1,24.5,28.9,32.1,56.7],
+  y30:  [5.2,4.9,5.5,4.4,6.7,8.9,11.6,14.6,13.9,17.2,15.5,18.1,26.4,23.3,22.1,24.5,28.9,32.1,56.7],
+  y100: [1.3,0.5,0.9,1.3,49.5,15.0,5.2,4.4,6.7,14.6,26.4,23.3,22.1,28.9,56.7],
+};
+const LONG_SPRME = {
+  y10:  [1.475,1.475,1.475,1.475,1.475,1.475,1.475,1.475,1.875,1.875,1.875],
+  y20:  [1.375,1.375,1.375,1.375,1.375,1.375,1.375,1.375,1.375,1.375,1.475,1.475,1.475,1.475,1.875,1.875],
+  y30:  [2.625,1.625,1.625,1.375,1.375,1.375,1.375,1.475,1.475,1.875,1.875],
+  y100: [6.5,4.5,2.625,1.625,1.375,1.475,1.875],
+};
+const LONG_JGB10 = {
+  y10:  [0.27,0.05,0.01,0.02,-0.02,0.02,0.42,0.97,1.72,1.50,1.53],
+  y20:  [1.39,1.68,0.74,0.64,1.00,1.05,0.27,0.05,0.01,0.02,-0.02,0.02,0.42,0.97,1.72,1.50,1.53],
+  y30:  [3.10,2.20,1.80,2.00,1.39,1.68,0.74,0.64,1.00,1.05,0.27,0.05,0.01,0.42,0.97,1.72,1.50,1.53],
+  y100: [5.5,7.3,4.2,7.0,5.0,3.0,2.0,1.0,0.64,0.27,0.01,0.42,1.72,1.53],
+};
+const LONG_UST10 = {
+  y10:  [2.27,2.45,2.69,1.92,0.93,1.51,3.88,3.97,4.58,4.24,4.41],
+  y20:  [4.22,4.63,2.25,3.85,3.29,2.27,2.45,2.69,1.92,0.93,1.51,3.88,3.97,4.58,4.24,4.41],
+  y30:  [5.58,6.45,5.11,4.65,4.22,4.63,2.25,3.85,3.29,2.27,2.45,2.69,1.92,0.93,1.51,3.88,3.97,4.58,4.24,4.41],
+  y100: [3.2,4.0,2.5,3.9,8.0,15.8,7.4,5.6,4.22,2.25,0.93,3.88,4.58,4.41],
+};
+
+const LONG_MAP = {
+  usdjpy:LONG_USDJPY, eurjpy:{y10:null,y20:null,y30:null,y100:null},
+  inrjpy:{y10:null,y20:null,y30:null,y100:null},
+  n225:LONG_N225, topix:LONG_TOPIX,
+  sp500:LONG_SP500, nasdaq:LONG_NASDAQ, dow:LONG_DOW,
+  sensex:{y10:null,y20:null,y30:null,y100:null},
+  nifty:{y10:null,y20:null,y30:null,y100:null},
+  gold:LONG_GOLD, silver:LONG_SILVER,
+  sprme:LONG_SPRME, jgb10:LONG_JGB10, ust10:LONG_UST10,
+};
+
+function getPeriodKey() {
+  if (DAYS >= 36500) return 'y100';
+  if (DAYS >= 10950) return 'y30';
+  if (DAYS >= 7300)  return 'y20';
+  if (DAYS >= 3650)  return 'y10';
+  return null;
+}
+function isLongTerm() { return DAYS >= 3650; }
+
+function mkYearLabels(data) {
+  const n = data.length, end = 2026, out = [];
+  for (let i = n-1; i >= 0; i--) out.unshift((end-i)+'年');
+  return out;
+}
+
 
 // ─── グラフ描画 ───────────────────────────────────────────────
 
@@ -555,40 +650,38 @@ function drawFX(live) {
   const LBL = {usdjpy:'USD/JPY', eurjpy:'EUR/JPY', inrjpy:'INR/JPY'};
 
   ['usdjpy','eurjpy','inrjpy'].forEach(id => {
-    const val  = (live[id]>0 && isFinite(live[id])) ? live[id] : FB[id];
-    const fmt  = FMT[id];
-    const lbl  = LBL[id];
-    const avHist = live['h_'+id]; // Alpha Vantageの実データ
+    const val = (live[id]>0 && isFinite(live[id])) ? live[id] : FB[id];
+    const fmt = FMT[id], lbl = LBL[id];
+    const avHist = live['h_'+id];
+    const pk = getPeriodKey();
 
     let series, labels;
 
     if (avHist?.length >= 2) {
-      // Alpha Vantage 実データ優先
-      series = avHist;
-      labels = mkPeriodLabels(series.length);
+      series = avHist; labels = mkYearLabels(avHist);
+    } else if (pk && LONG_MAP[id]?.[pk]) {
+      // 長期年次データ
+      const ld = [...LONG_MAP[id][pk]];
+      ld[ld.length-1] = val; // 末尾=現在値
+      series = ld; labels = mkYearLabels(ld);
     } else if (DAYS <= 1) {
-      // 「日」選択時: 現在値を基点に24時間分の参考推移を生成
-      // 実際の日中変動を模したわずかな揺らぎ（小幅、±0.3%程度）
+      // 「日」: 24時間参考推移
       series = [];
-      const base = val;
-      const vol = base * 0.003;
-      for (let i = 23; i >= 1; i--) {
-        const noise = (Math.random() - 0.5) * vol;
-        series.push(parseFloat((base + noise).toFixed(4)));
-      }
-      series.push(val); // 最右が現在値
-      labels = mkHourLabels();
+      const vol = val * 0.003;
+      for (let i=23; i>=1; i--) series.push(parseFloat((val+(Math.random()-.5)*vol).toFixed(4)));
+      series.push(val); labels = mkHourLabels();
     } else {
-      // 週〜年: 月次参考値を期間でスライス
+      // 週〜年: 月次参考値
       const refH = FX_REF[id];
-      const pts = DAYS<=7?2 : DAYS<=30?4 : DAYS<=90?6 : DAYS<=180?9 : refH.length;
+      if (!refH) { setCard(id,fmt(val),{text:'データなし',cls:'na'},'ac'); return; }
+      const pts = DAYS<=7?2:DAYS<=30?4:DAYS<=90?6:DAYS<=180?9:refH.length;
       series = [...refH.slice(-Math.max(2,pts))];
-      series[series.length-1] = val; // 末尾は現在のLIVE値で上書き
+      series[series.length-1] = val;
       labels = mkMonthLabels(series.length);
     }
 
     const col = setCardSeries(id, fmt(val), series);
-    drawChart('ch-'+id, labels, series, col, 52, {label: lbl});
+    drawChart('ch-'+id, labels, series, col, 52, {label:lbl});
   });
 }
 
@@ -604,38 +697,40 @@ function drawStocks(live) {
   ];
   items.forEach(([id,fmt,lbl])=>{
     const val    = REF[id].v;
-    const avHist = live['h_'+id]; // Alpha Vantage実データ
+    const avHist = live['h_'+id];
+    const pk     = getPeriodKey();
 
+    let series, labels;
     if (avHist?.length >= 2) {
-      // ── AVデータあり: 正確なグラフを表示 ──
-      const col = setCardSeries(id, fmt(val), avHist);
-      drawChart('ch-'+id, mkLabels(avHist.length), avHist, col, 52, {label:lbl});
+      series = avHist; labels = mkLabels(avHist.length);
+    } else if (pk && LONG_MAP[id]?.[pk]) {
+      // 長期年次データあり
+      const ld = [...LONG_MAP[id][pk]]; ld[ld.length-1] = val;
+      series = ld; labels = mkYearLabels(ld);
     } else {
-      // ── AVデータなし: 値のみ表示、グラフなし ──
-      // 「日」選択 → 日中データ取得不可
-      // 「週/月/年」→ AVキー登録後にグラフ表示
-      const msg = DAYS <= 1
-        ? '日中データ取得には証券APIが必要です'
+      // データなし（日・長期未収録）
+      const msg = DAYS<=1 ? '日中データ取得には証券APIが必要です'
+        : isLongTerm() ? 'この指数の長期データは未収録です'
         : 'グラフはAVキー登録後に表示';
-      setCard(id, fmt(val), {text: msg, cls:'na'}, 'up');
-      // グラフをクリア
-      if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+      setCard(id, fmt(val), {text:msg, cls:'na'}, 'up');
+      if (CI[id]) { CI[id].destroy(); delete CI[id]; } return;
     }
+
+    const col = setCardSeries(id, fmt(val), series);
+    drawChart('ch-'+id, labels, series, col, 52, {label:lbl});
   });
 }
 
 function drawRates(live) {
-  // ── 住宅ローン: 月次公表値データあり → 期間に応じて表示 ──
-  // 「日」のみグラフなし（日中変動なし）
-  if (DAYS <= 1) {
-    // 値だけ表示
-    document.getElementById('v-loan-var').textContent = '2.875%';
-    document.getElementById('v-loan-fix').textContent = '1.820%';
+  const pk = getPeriodKey();
+
+  // ── 住宅ローン ──
+  document.getElementById('v-loan-var').textContent = '2.875%';
+  document.getElementById('v-loan-fix').textContent = '1.820%';
+  if (DAYS <= 1 || isLongTerm()) {
     if (CI['ch-loan']) { CI['ch-loan'].destroy(); delete CI['ch-loan']; }
   } else {
-    const ln = Math.min(DAYS<=7?4 : DAYS<=35?6 : DAYS<=95?12 : 24, LOAN_VAR_H.length);
-    document.getElementById('v-loan-var').textContent = '2.875%';
-    document.getElementById('v-loan-fix').textContent = '1.820%';
+    const ln = Math.min(DAYS<=7?4:DAYS<=35?6:DAYS<=95?12:24, LOAN_VAR_H.length);
     drawChart('ch-loan', mkMonthLabels(ln), null, null, 58, {
       rate:true,
       datasets:[
@@ -645,41 +740,29 @@ function drawRates(live) {
     });
   }
 
-  // ── 短期プライム: 公表値月次データあり ──
-  if (DAYS <= 1) {
-    setCard('sprme', REF.sprme.v.toFixed(3)+'%', {text:'日中変動なし（月次データ）',cls:'na'}, 'gc');
-    if (CI['ch-sprme']) { CI['ch-sprme'].destroy(); delete CI['ch-sprme']; }
-  } else {
-    const sh = REF.sprme.h;
-    const pts = DAYS<=7?3 : DAYS<=30?4 : DAYS<=90?6 : DAYS<=180?9 : sh.length;
-    const sl = sh.slice(-Math.max(2,pts));
-    setCardSeries('sprme', REF.sprme.v.toFixed(3)+'%', sl, 'gc');
-    drawChart('ch-sprme', mkMonthLabels(sl.length), sl, '#F5C842', 52, {rate:true, label:'短期プライム'});
+  // 共通: 金利グラフ描画ヘルパー
+  function rateChart(id, val, refH, longKey, color, h, lbl, cls) {
+    const fmtV = val.toFixed(3)+'%';
+    if (DAYS <= 1) {
+      setCard(id, fmtV, {text:'日中データなし（参考値）',cls:'na'}, cls||'up');
+      if (CI['ch-'+id]) { CI['ch-'+id].destroy(); delete CI['ch-'+id]; } return;
+    }
+    let series, labels;
+    if (pk && LONG_MAP[longKey]?.[pk]) {
+      const ld = [...LONG_MAP[longKey][pk]]; ld[ld.length-1] = val;
+      series = ld; labels = mkYearLabels(ld);
+    } else {
+      const pts = DAYS<=7?3:DAYS<=30?4:DAYS<=90?6:DAYS<=180?9:refH.length;
+      series = refH.slice(-Math.max(2,pts)); labels = mkMonthLabels(series.length);
+    }
+    if (cls) setCardSeries(id, fmtV, series, cls);
+    else { const c2=setCardSeries(id,fmtV,series); color=c2; }
+    drawChart('ch-'+id, labels, series, color, h, {rate:true, label:lbl});
   }
 
-  // ── 日本10年国債 ──
-  if (DAYS <= 1) {
-    setCard('jgb10', REF.jgb10.v.toFixed(3)+'%', {text:'日中データなし（参考値）',cls:'na'}, 'up');
-    if (CI['ch-jgb10']) { CI['ch-jgb10'].destroy(); delete CI['ch-jgb10']; }
-  } else {
-    const jh = REF.jgb10.h;
-    const pts = DAYS<=7?3 : DAYS<=30?4 : DAYS<=90?6 : DAYS<=180?9 : jh.length;
-    const jl = jh.slice(-Math.max(2,pts));
-    const jc = setCardSeries('jgb10', REF.jgb10.v.toFixed(3)+'%', jl);
-    drawChart('ch-jgb10', mkMonthLabels(jl.length), jl, jc, 52, {rate:true, label:'日本10年国債'});
-  }
-
-  // ── 米国10年国債 ──
-  if (DAYS <= 1) {
-    setCard('ust10', REF.ust10.v.toFixed(3)+'%', {text:'日中データなし（参考値）',cls:'na'}, 'up');
-    if (CI['ch-ust10']) { CI['ch-ust10'].destroy(); delete CI['ch-ust10']; }
-  } else {
-    const uh = REF.ust10.h;
-    const pts = DAYS<=7?3 : DAYS<=30?4 : DAYS<=90?6 : DAYS<=180?9 : uh.length;
-    const ul = uh.slice(-Math.max(2,pts));
-    const uc = setCardSeries('ust10', REF.ust10.v.toFixed(3)+'%', ul);
-    drawChart('ch-ust10', mkMonthLabels(ul.length), ul, uc, 64, {rate:true, label:'US10年国債'});
-  }
+  rateChart('sprme', REF.sprme.v, REF.sprme.h, 'sprme', '#F5C842', 52, '短期プライム', 'gc');
+  rateChart('jgb10', REF.jgb10.v, REF.jgb10.h, 'jgb10', null, 52, '日本10年国債', null);
+  rateChart('ust10', REF.ust10.v, REF.ust10.h, 'ust10', null, 64, 'US10年国債', null);
 }
 
 function drawBTC(live) {
@@ -692,15 +775,26 @@ function drawBTC(live) {
 }
 
 function drawMetals(live) {
-  [['gold','$','gc','#F5C842',v=>'$'+v.toFixed(1)],
-   ['silver','$','sc','#A8C0D0',v=>'$'+v.toFixed(2)],
-   ['plat','$','pc','#7ECFCF',v=>'$'+v.toFixed(1)]
-  ].forEach(([id,,cls,col,fmt])=>{
-    const v=live[id];
-    if (v && isFinite(v)) {
-      setCard(id,fmt(v),{text:'リアルタイム値',cls:'up'},cls);
+  const pk = getPeriodKey();
+  [['gold',  '#F5C842','gc',v=>'$'+v.toFixed(1), 4010, LONG_GOLD],
+   ['silver','#A8C0D0','sc',v=>'$'+v.toFixed(2), 56.7, LONG_SILVER],
+   ['plat',  '#7ECFCF','pc',v=>'$'+v.toFixed(1), 1577, null]
+  ].forEach(([id,col,cls,fmt,fb,longData])=>{
+    const lv = live[id];
+    const val = (lv && isFinite(lv)) ? lv : fb;
+    const isLive = lv && isFinite(lv);
+
+    if (isLongTerm() && longData?.[pk]) {
+      // 長期グラフ
+      const ld = [...longData[pk]]; ld[ld.length-1] = val;
+      const c2 = setCardSeries(id, fmt(val), ld, cls);
+      drawChart('ch-'+id, mkYearLabels(ld), ld, col, 52, {money:true, label:id.toUpperCase()});
+    } else if (isLongTerm()) {
+      setCard(id, fmt(val), {text:isLive?'リアルタイム値':'参考値', cls:isLive?'up':'na'}, cls);
+      if (CI['ch-'+id]) { CI['ch-'+id].destroy(); delete CI['ch-'+id]; }
     } else {
-      setCard(id,'---',{text:'取得失敗',cls:'na'},cls);
+      setCard(id, fmt(val), {text:isLive?'リアルタイム値':'参考値', cls:isLive?'up':'na'}, cls);
+      if (CI['ch-'+id]) { CI['ch-'+id].destroy(); delete CI['ch-'+id]; }
     }
   });
 }
