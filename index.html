@@ -645,43 +645,39 @@ function setCardSeries(id, valStr, series, colorCls, opts={}) {
 // ─── 各セクション描画 ─────────────────────────────────────────
 
 function drawFX(live) {
-  const FB  = {usdjpy:161.8, eurjpy:183.8, inrjpy:1.91};
   const FMT = {usdjpy:v=>v.toFixed(2), eurjpy:v=>v.toFixed(2), inrjpy:v=>v.toFixed(3)};
   const LBL = {usdjpy:'USD/JPY', eurjpy:'EUR/JPY', inrjpy:'INR/JPY'};
 
   ['usdjpy','eurjpy','inrjpy'].forEach(id => {
-    const val = (live[id]>0 && isFinite(live[id])) ? live[id] : FB[id];
+    const lv  = live[id];
     const fmt = FMT[id], lbl = LBL[id];
-    const avHist = live['h_'+id];
-    const pk = getPeriodKey();
+    const avHist = live['h_'+id];   // Alpha Vantage 実データ
+    const pk     = getPeriodKey();
 
-    let series, labels;
-
+    // ── 実データがある場合のみグラフ描画 ──
     if (avHist?.length >= 2) {
-      series = avHist; labels = mkYearLabels(avHist);
-    } else if (pk && LONG_MAP[id]?.[pk]) {
-      // 長期年次データ
-      const ld = [...LONG_MAP[id][pk]];
-      ld[ld.length-1] = val; // 末尾=現在値
-      series = ld; labels = mkYearLabels(ld);
-    } else if (DAYS <= 1) {
-      // 「日」: 24時間参考推移
-      series = [];
-      const vol = val * 0.003;
-      for (let i=23; i>=1; i--) series.push(parseFloat((val+(Math.random()-.5)*vol).toFixed(4)));
-      series.push(val); labels = mkHourLabels();
-    } else {
-      // 週〜年: 月次参考値
-      const refH = FX_REF[id];
-      if (!refH) { setCard(id,fmt(val),{text:'データなし',cls:'na'},'ac'); return; }
-      const pts = DAYS<=7?2:DAYS<=30?4:DAYS<=90?6:DAYS<=180?9:refH.length;
-      series = [...refH.slice(-Math.max(2,pts))];
-      series[series.length-1] = val;
-      labels = mkMonthLabels(series.length);
+      // AV日次データ（最も正確）
+      const col = setCardSeries(id, fmt(lv||avHist[avHist.length-1]), avHist);
+      drawChart('ch-'+id, mkLabels(avHist.length), avHist, col, 52, {label:lbl});
+      return;
+    }
+    if (pk && LONG_MAP[id]?.[pk]) {
+      // 長期年次実績データ
+      const ld = LONG_MAP[id][pk];
+      // 末尾はLIVE値で上書き（実際の現在値）
+      const series = lv ? [...ld.slice(0,-1), lv] : ld;
+      const col = setCardSeries(id, fmt(lv||ld[ld.length-1]), series);
+      drawChart('ch-'+id, mkYearLabels(series), series, col, 52, {label:lbl});
+      return;
     }
 
-    const col = setCardSeries(id, fmt(val), series);
-    drawChart('ch-'+id, labels, series, col, 52, {label:lbl});
+    // ── グラフなし: 現在値のみ表示 ──
+    if (lv && isFinite(lv)) {
+      setCard(id, fmt(lv), {text:'リアルタイム値（グラフ: AV登録後）', cls:'up'}, 'up');
+    } else {
+      setCard(id, '---', {text:'取得失敗', cls:'na'}, 'ac');
+    }
+    if (CI[id]) { CI[id].destroy(); delete CI[id]; }
   });
 }
 
@@ -695,39 +691,44 @@ function drawStocks(live) {
     ['sensex',v=>v.toLocaleString('en-IN',{maximumFractionDigits:0}),'SENSEX'],
     ['nifty', v=>v.toLocaleString('en-IN',{maximumFractionDigits:1}),'NIFTY50'],
   ];
+  const pk = getPeriodKey();
+
   items.forEach(([id,fmt,lbl])=>{
     const val    = REF[id].v;
     const avHist = live['h_'+id];
-    const pk     = getPeriodKey();
 
-    let series, labels;
     if (avHist?.length >= 2) {
-      series = avHist; labels = mkLabels(avHist.length);
-    } else if (pk && LONG_MAP[id]?.[pk]) {
-      // 長期年次データあり
-      const ld = [...LONG_MAP[id][pk]]; ld[ld.length-1] = val;
-      series = ld; labels = mkYearLabels(ld);
-    } else {
-      // データなし（日・長期未収録）
-      const msg = DAYS<=1 ? '日中データ取得には証券APIが必要です'
-        : isLongTerm() ? 'この指数の長期データは未収録です'
-        : 'グラフはAVキー登録後に表示';
-      setCard(id, fmt(val), {text:msg, cls:'na'}, 'up');
-      if (CI[id]) { CI[id].destroy(); delete CI[id]; } return;
+      // ── AV実データ ──
+      const col = setCardSeries(id, fmt(val), avHist);
+      drawChart('ch-'+id, mkLabels(avHist.length), avHist, col, 52, {label:lbl});
+      return;
+    }
+    if (pk && LONG_MAP[id]?.[pk]) {
+      // ── 長期年次実績データ ──
+      const ld = [...LONG_MAP[id][pk]];
+      ld[ld.length-1] = val; // 末尾=現在の参考値
+      const col = setCardSeries(id, fmt(val), ld);
+      drawChart('ch-'+id, mkYearLabels(ld), ld, col, 52, {label:lbl});
+      return;
     }
 
-    const col = setCardSeries(id, fmt(val), series);
-    drawChart('ch-'+id, labels, series, col, 52, {label:lbl});
+    // ── グラフなし ──
+    const msg = DAYS<=1 ? '日中データなし'
+      : isLongTerm() ? 'この指数の長期データは未収録'
+      : 'グラフ: AV登録後に表示';
+    setCard(id, fmt(val), {text:msg, cls:'na'}, 'up');
+    if (CI[id]) { CI[id].destroy(); delete CI[id]; }
   });
 }
 
 function drawRates(live) {
   const pk = getPeriodKey();
 
-  // ── 住宅ローン ──
+  // ── 住宅ローン（実際の公表値・月次）──
   document.getElementById('v-loan-var').textContent = '2.875%';
   document.getElementById('v-loan-fix').textContent = '1.820%';
   if (DAYS <= 1 || isLongTerm()) {
+    // 「日」または長期: グラフなし（月次データのみ）
     if (CI['ch-loan']) { CI['ch-loan'].destroy(); delete CI['ch-loan']; }
   } else {
     const ln = Math.min(DAYS<=7?4:DAYS<=35?6:DAYS<=95?12:24, LOAN_VAR_H.length);
@@ -740,29 +741,34 @@ function drawRates(live) {
     });
   }
 
-  // 共通: 金利グラフ描画ヘルパー
+  // 共通ヘルパー: 金利グラフ
+  // refH = 月次公表値（実際の数値）、longKey = LONG_MAPのキー
   function rateChart(id, val, refH, longKey, color, h, lbl, cls) {
     const fmtV = val.toFixed(3)+'%';
     if (DAYS <= 1) {
-      setCard(id, fmtV, {text:'日中データなし（参考値）',cls:'na'}, cls||'up');
-      if (CI['ch-'+id]) { CI['ch-'+id].destroy(); delete CI['ch-'+id]; } return;
+      setCard(id, fmtV, {text:'日中変動なし（月次公表値）',cls:'na'}, cls||'up');
+      if (CI['ch-'+id]) { CI['ch-'+id].destroy(); delete CI['ch-'+id]; }
+      return;
     }
-    let series, labels;
     if (pk && LONG_MAP[longKey]?.[pk]) {
+      // 長期年次実績データ
       const ld = [...LONG_MAP[longKey][pk]]; ld[ld.length-1] = val;
-      series = ld; labels = mkYearLabels(ld);
-    } else {
-      const pts = DAYS<=7?3:DAYS<=30?4:DAYS<=90?6:DAYS<=180?9:refH.length;
-      series = refH.slice(-Math.max(2,pts)); labels = mkMonthLabels(series.length);
+      if (cls) setCardSeries(id, fmtV, ld, cls);
+      else { const c2 = setCardSeries(id, fmtV, ld); color = c2; }
+      drawChart('ch-'+id, mkYearLabels(ld), ld, color, h, {rate:true, label:lbl});
+      return;
     }
-    if (cls) setCardSeries(id, fmtV, series, cls);
-    else { const c2=setCardSeries(id,fmtV,series); color=c2; }
-    drawChart('ch-'+id, labels, series, color, h, {rate:true, label:lbl});
+    // 短期〜1年: 月次公表値（実際の値）
+    const pts = DAYS<=7?3:DAYS<=30?4:DAYS<=90?6:DAYS<=180?9:refH.length;
+    const sl  = refH.slice(-Math.max(2,pts));
+    if (cls) setCardSeries(id, fmtV, sl, cls);
+    else { const c2 = setCardSeries(id, fmtV, sl); color = c2; }
+    drawChart('ch-'+id, mkMonthLabels(sl.length), sl, color, h, {rate:true, label:lbl});
   }
 
   rateChart('sprme', REF.sprme.v, REF.sprme.h, 'sprme', '#F5C842', 52, '短期プライム', 'gc');
-  rateChart('jgb10', REF.jgb10.v, REF.jgb10.h, 'jgb10', null, 52, '日本10年国債', null);
-  rateChart('ust10', REF.ust10.v, REF.ust10.h, 'ust10', null, 64, 'US10年国債', null);
+  rateChart('jgb10', REF.jgb10.v, REF.jgb10.h, 'jgb10', null,      52, '日本10年国債', null);
+  rateChart('ust10', REF.ust10.v, REF.ust10.h, 'ust10', null,      64, 'US10年国債',  null);
 }
 
 function drawBTC(live) {
@@ -776,26 +782,27 @@ function drawBTC(live) {
 
 function drawMetals(live) {
   const pk = getPeriodKey();
-  [['gold',  '#F5C842','gc',v=>'$'+v.toFixed(1), 4010, LONG_GOLD],
-   ['silver','#A8C0D0','sc',v=>'$'+v.toFixed(2), 56.7, LONG_SILVER],
-   ['plat',  '#7ECFCF','pc',v=>'$'+v.toFixed(1), 1577, null]
-  ].forEach(([id,col,cls,fmt,fb,longData])=>{
-    const lv = live[id];
+  [['gold',  '#F5C842','gc',v=>'$'+v.toFixed(1), 4010, LONG_GOLD,  'GOLD'],
+   ['silver','#A8C0D0','sc',v=>'$'+v.toFixed(2), 56.7, LONG_SILVER,'SILVER'],
+   ['plat',  '#7ECFCF','pc',v=>'$'+v.toFixed(1), 1577, null,       'PLATINUM']
+  ].forEach(([id,col,cls,fmt,fb,longData,lbl])=>{
+    const lv  = live[id];
     const val = (lv && isFinite(lv)) ? lv : fb;
-    const isLive = lv && isFinite(lv);
 
-    if (isLongTerm() && longData?.[pk]) {
-      // 長期グラフ
-      const ld = [...longData[pk]]; ld[ld.length-1] = val;
-      const c2 = setCardSeries(id, fmt(val), ld, cls);
-      drawChart('ch-'+id, mkYearLabels(ld), ld, col, 52, {money:true, label:id.toUpperCase()});
-    } else if (isLongTerm()) {
-      setCard(id, fmt(val), {text:isLive?'リアルタイム値':'参考値', cls:isLive?'up':'na'}, cls);
-      if (CI['ch-'+id]) { CI['ch-'+id].destroy(); delete CI['ch-'+id]; }
-    } else {
-      setCard(id, fmt(val), {text:isLive?'リアルタイム値':'参考値', cls:isLive?'up':'na'}, cls);
-      if (CI['ch-'+id]) { CI['ch-'+id].destroy(); delete CI['ch-'+id]; }
+    if (pk && longData?.[pk]) {
+      // 長期年次実績データあり → グラフ表示
+      const ld = [...longData[pk]];
+      if (lv && isFinite(lv)) ld[ld.length-1] = lv; // 末尾=現在LIVE値
+      const c2 = setCardSeries(id, fmt(ld[ld.length-1]), ld, cls);
+      drawChart('ch-'+id, mkYearLabels(ld), ld, col, 52, {money:true, label:lbl});
+      return;
     }
+    // 長期以外 or 長期データなし → 現在値のみ
+    setCard(id, fmt(val), {
+      text: lv && isFinite(lv) ? 'リアルタイム値' : '参考値 (2026/6)',
+      cls:  lv && isFinite(lv) ? 'up' : 'na'
+    }, cls);
+    if (CI[id]) { CI[id].destroy(); delete CI[id]; }
   });
 }
 
