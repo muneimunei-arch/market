@@ -63,8 +63,9 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 .cv{font-size:14px;font-weight:700;font-family:var(--mono);color:var(--txt);line-height:1.1}
 .cc{font-size:9px;margin-top:1px;font-family:var(--mono)}
 .cc.up{color:var(--up)}.cc.dn{color:var(--dn)}.cc.na{color:var(--txt2)}
-.mc{position:relative;width:100%;height:52px;margin-top:5px}
-.mc canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+/* responsive:true + maintainAspectRatio:false に対応したcanvasラッパー */
+.mc{width:100%;height:52px;margin-top:5px}
+.mc canvas{display:block;width:100%!important;height:52px!important}
 
 /* WIDE CARD */
 .wcard{background:var(--card);border:1px solid var(--brd);border-radius:9px;padding:8px 10px;margin-bottom:6px;position:relative;overflow:hidden}
@@ -73,8 +74,8 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 .wcard.gc::before{background:var(--gold)}.wcard.oc::before{background:var(--oil)}
 .wi{display:flex;gap:8px;align-items:flex-start}
 .winfo{flex-shrink:0;min-width:85px}
-.wch{flex:1;min-width:0;position:relative;height:64px}
-.wch canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+.wch{flex:1;min-width:0;height:64px}
+.wch canvas{display:block;width:100%!important;height:64px!important}
 
 /* LOAN */
 .loan-wrap{background:var(--card);border:1px solid var(--brd);border-radius:9px;padding:8px 10px;margin-bottom:6px;position:relative;overflow:hidden}
@@ -86,8 +87,8 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 .lv-lbl{font-size:8px;color:var(--txt2)}
 .lv-num{font-size:15px;font-weight:700;font-family:var(--mono)}
 .lv-num.var{color:var(--up)}.lv-num.fix{color:var(--gold)}
-.loan-ch{position:relative;height:58px;margin-top:4px}
-.loan-ch canvas{position:absolute;top:0;left:0;width:100%!important;height:100%!important}
+.loan-ch{height:58px;margin-top:4px}
+.loan-ch canvas{display:block;width:100%!important;height:58px!important}
 .loan-note{font-size:8px;color:var(--txt2);margin-top:4px}
 
 /* STATUS */
@@ -405,59 +406,88 @@ function mkMonthLabels(n) {
 }
 
 function drawChart(id, labels, data, color, h, opts={}) {
+  // containerとcanvasを取得（containerがなければcanvasを直接使う）
+  const container = document.getElementById(id)?.parentElement;
   const canvas = document.getElementById(id);
   if (!canvas) return;
   if (CI[id]) { CI[id].destroy(); delete CI[id]; }
   if (!data && !opts.datasets) return;
 
+  // canvasをcontainerにフィットさせる（responsive対応）
+  canvas.style.display = 'block';
+  canvas.style.width   = '100%';
+  canvas.style.height  = (h || 52) + 'px';
+
   const ctx = canvas.getContext('2d');
   const sc = color || '#00C4E8';
-  const grad = ctx.createLinearGradient(0,0,0,h||52);
-  grad.addColorStop(0, sc+'55'); grad.addColorStop(1, sc+'05');
+  const grad = ctx.createLinearGradient(0, 0, 0, h || 52);
+  grad.addColorStop(0, sc + '55');
+  grad.addColorStop(1, sc + '05');
 
   const isMulti = !!opts.datasets;
   const datasets = isMulti
-    ? opts.datasets.map(ds=>({ label:ds.label, data:ds.data, borderColor:ds.color, borderWidth:2, pointRadius:0, fill:false, tension:0.4 }))
-    : [{ data, borderColor:sc, borderWidth:2, pointRadius:0, fill:true, backgroundColor:grad, tension:0.4 }];
+    ? opts.datasets.map(ds => ({
+        label: ds.label, data: ds.data, borderColor: ds.color,
+        borderWidth: 2, pointRadius: 0, fill: false, tension: 0.4
+      }))
+    : [{
+        data, borderColor: sc, borderWidth: 2,
+        pointRadius: 0, fill: true, backgroundColor: grad, tension: 0.4
+      }];
 
-  const allVals = (isMulti ? opts.datasets.flatMap(d=>d.data) : data).filter(v=>isFinite(v));
+  const allVals = (isMulti ? opts.datasets.flatMap(d => d.data) : data)
+    .filter(v => isFinite(v));
   if (!allVals.length) return;
   const mn = Math.min(...allVals), mx = Math.max(...allVals);
-  const pad = mn===mx ? Math.abs(mn)*0.01+0.01 : 0;
+  const pad = mn === mx ? Math.abs(mn) * 0.01 + 0.01 : 0;
 
-  // ツールチップ
+  // ツールチップ設定
   const ttip = {
-    enabled:true, mode:'index', intersect:false,
-    backgroundColor:'rgba(4,8,20,0.97)',
-    titleColor:'#00C4E8', bodyColor:'#FFFFFF',
-    borderColor:'#00C4E8', borderWidth:1.5,
-    padding:{top:8,bottom:8,left:12,right:12},
-    cornerRadius:8, displayColors:false,
-    titleFont:{family:'-apple-system,sans-serif',size:12,weight:'600'},
-    bodyFont:{family:"'Courier New',monospace",size:16,weight:'700'},
-    callbacks:{
-      title: items => items[0]?.label||'',
+    enabled: true,
+    mode: 'index',
+    intersect: false,
+    position: 'nearest',
+    backgroundColor: 'rgba(4,8,20,0.97)',
+    titleColor: '#00C4E8',
+    bodyColor: '#FFFFFF',
+    borderColor: '#00C4E8',
+    borderWidth: 1.5,
+    padding: { top: 8, bottom: 8, left: 14, right: 14 },
+    cornerRadius: 8,
+    displayColors: false,
+    caretPadding: 8,
+    titleFont: { family: '-apple-system,BlinkMacSystemFont,sans-serif', size: 12, weight: '600' },
+    bodyFont:  { family: "'Courier New',monospace", size: 15, weight: '700' },
+    callbacks: {
+      title: items => items[0]?.label || '',
       label: item => {
         const v = Number(item.raw);
-        const name = item.dataset.label ? item.dataset.label+'  ' : '';
+        const name = item.dataset.label ? item.dataset.label + '   ' : '';
         if (opts.rate)  return name + v.toFixed(3) + ' %';
-        if (opts.money) return name + '$ ' + v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-        return name + v.toLocaleString('ja-JP',{maximumFractionDigits:2});
+        if (opts.money) return name + '$ ' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        return name + v.toLocaleString('ja-JP', { maximumFractionDigits: 2 });
       }
     }
   };
 
   CI[id] = new Chart(ctx, {
-    type:'line',
-    data:{ labels, datasets },
-    options:{
-      responsive:false, animation:false,
-      interaction:{ mode:'index', intersect:false },
-      plugins:{
-        legend: isMulti ? {display:true,position:'top',labels:{color:'#6A85A8',font:{size:9},boxWidth:12,padding:5}} : {display:false},
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,           // ← trueに変更（ツールチップ位置の正確化）
+      maintainAspectRatio: false, // ← falseで高さを固定
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: isMulti
+          ? { display: true, position: 'top', labels: { color: '#6A85A8', font: { size: 9 }, boxWidth: 12, padding: 5 } }
+          : { display: false },
         tooltip: ttip
       },
-      scales:{ x:{display:false}, y:{display:false, min:(mn-pad)*0.995, max:(mx+pad)*1.005} }
+      scales: {
+        x: { display: false },
+        y: { display: false, min: (mn - pad) * 0.995, max: (mx + pad) * 1.005 }
+      }
     }
   });
 }
@@ -586,13 +616,14 @@ function drawMetals(live) {
 }
 
 function drawOil(live) {
-  [['wti','#FF8C42'],['brent','#FFB347']].forEach(([id,col])=>{
-    const v=live[id];
-    if (v && isFinite(v)) {
-      setCard(id,'$'+v.toFixed(2),{text:'リアルタイム値',cls:'up'},'oc');
-    } else {
-      setCard(id,'---',{text:'取得失敗',cls:'na'},'oc');
-    }
+  // 参考値（2026年6月実際値）
+  const OIL_FB = { wti: 70.5, brent: 74.2 };
+  [['wti','WTI原油','#FF8C42'], ['brent','Brent原油','#FFB347']].forEach(([id, label, col]) => {
+    const val = (live[id] && isFinite(live[id])) ? live[id] : OIL_FB[id];
+    const isLive = live[id] && isFinite(live[id]);
+    setCard(id, '$' + val.toFixed(2),
+      isLive ? {text:'リアルタイム値',cls:'up'} : {text:'参考値 (2026/6)',cls:'na'},
+      'oc');
   });
 }
 
