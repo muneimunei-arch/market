@@ -64,8 +64,8 @@ html,body{background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkM
 .cc{font-size:9px;margin-top:1px;font-family:var(--mono)}
 .cc.up{color:var(--up)}.cc.dn{color:var(--dn)}.cc.na{color:var(--txt2)}
 /* responsive:true + maintainAspectRatio:false に対応したcanvasラッパー */
-.mc{width:100%;height:52px;margin-top:5px}
-.mc canvas{display:block;width:100%!important;height:52px!important}
+.mc{width:100%;height:64px;margin-top:5px}
+.mc canvas{display:block;width:100%!important;height:64px!important}
 
 /* WIDE CARD */
 .wcard{background:var(--card);border:1px solid var(--brd);border-radius:9px;padding:8px 10px;margin-bottom:6px;position:relative;overflow:hidden}
@@ -541,17 +541,22 @@ function mkPeriodLabels() {
   return out;
 }
 
-// 長期年次ラベル（drawRatesやmkYearLabels用）
+// 長期年次ラベル：末尾が必ず2026年になるよう逆算
+// step=1（y10/y20/y30）、step=5（y100）
 function mkYearLabels(data, startYear, step) {
-  const s = step || 1;
+  const s   = step || 1;
+  const n   = data.length;
+  // 末尾=2026年から逆算して先頭年を決める
+  const end = 2026;
   const out = [];
-  for (let i = 0; i < data.length; i++) {
-    out.push((startYear + i * s) + '年');
+  for (let i = 0; i < n; i++) {
+    out.push((end - (n - 1 - i) * s) + '年');
   }
   return out;
 }
 
 function getStartYear(id, pk) {
+  // 使用しなくなるが後方互換のため残す
   const S = {usdjpy:1971,n225:1971,topix:1971,sp500:1971,nasdaq:1971,dow:1971,
              gold:1971,silver:1971,sprme:1971,jgb10:1971,ust10:1971};
   if (pk==='y100') return S[id]||1971;
@@ -658,7 +663,24 @@ function drawChart(id, labels, data, color, h, opts={}) {
         tooltip: ttip
       },
       scales: {
-        x: { display: false },
+        x: {
+          display: true,
+          grid: { display: false },
+          border: { display: false },
+          ticks: {
+            color: '#6A85A8',
+            font: { size: 9 },
+            maxRotation: 0,
+            // 最初と最後のラベルだけ表示
+            callback: function(val, index, ticks) {
+              if (index === 0 || index === ticks.length - 1) {
+                return this.getLabelForValue(val);
+              }
+              return '';
+            },
+            maxTicksLimit: 2,
+          }
+        },
         y: { display: false, min: (mn - pad) * 0.995, max: (mx + pad) * 1.005 }
       }
     }
