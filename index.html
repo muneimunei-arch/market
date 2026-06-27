@@ -489,8 +489,59 @@ function getPeriodKey() {
 }
 function isLongTerm() { return DAYS >= 3650; }
 
-// 年次ラベル（左=startYear、右=最新年）
-// step=1: 1年刻み（y10/y20/y30）、step=5: 5年刻み（y100）
+// =====================================================
+// 期間ごとのラベル・データ点数を一元管理
+// =====================================================
+function getPeriodConfig() {
+  // { unit, pts, labelFn }
+  if (DAYS <= 1)    return { unit:'hour',  pts:24 };   // 日: 1時間×24
+  if (DAYS <= 7)    return { unit:'day',   pts:7  };   // 週: 1日×7
+  if (DAYS <= 30)   return { unit:'day',   pts:30 };   // 月: 1日×30
+  if (DAYS <= 90)   return { unit:'week',  pts:13 };   // 3ヶ月: 1週×13
+  if (DAYS <= 180)  return { unit:'week',  pts:26 };   // 6ヶ月: 1週×26
+  if (DAYS <= 365)  return { unit:'month', pts:12 };   // 年: 1ヶ月×12
+  if (DAYS <= 3650) return { unit:'month', pts:120};   // 10年: 1ヶ月×120
+  if (DAYS <= 7300) return { unit:'month', pts:240};   // 20年: 1ヶ月×240
+  if (DAYS <= 10950)return { unit:'year',  pts:30 };   // 30年: 1年×30
+  return               { unit:'year5', pts:12 };        // 100年: 5年×12(1971〜2026)
+}
+
+function mkPeriodLabels() {
+  const { unit, pts } = getPeriodConfig();
+  const now = new Date(), out = [];
+  if (unit === 'hour') {
+    for (let i=pts-1; i>=0; i--) {
+      const d=new Date(now); d.setHours(d.getHours()-i,0,0,0);
+      out.push(d.getHours().toString().padStart(2,'0')+':00');
+    }
+  } else if (unit === 'day') {
+    for (let i=pts-1; i>=0; i--) {
+      const d=new Date(now); d.setDate(d.getDate()-i);
+      out.push((d.getMonth()+1)+'/'+(d.getDate()));
+    }
+  } else if (unit === 'week') {
+    for (let i=pts-1; i>=0; i--) {
+      const d=new Date(now); d.setDate(d.getDate()-i*7);
+      out.push((d.getMonth()+1)+'/'+(d.getDate()));
+    }
+  } else if (unit === 'month') {
+    for (let i=pts-1; i>=0; i--) {
+      const d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+      out.push((d.getFullYear()%100)+'/'+(d.getMonth()+1));
+    }
+  } else if (unit === 'year') {
+    for (let i=pts-1; i>=0; i--) {
+      out.push((2026-i)+'年');
+    }
+  } else { // year5
+    for (let i=0; i<pts; i++) {
+      out.push((1971+i*5)+'年');
+    }
+  }
+  return out;
+}
+
+// 長期年次ラベル（drawRatesやmkYearLabels用）
 function mkYearLabels(data, startYear, step) {
   const s = step || 1;
   const out = [];
@@ -511,40 +562,20 @@ function getStartYear(id, pk) {
 }
 function getYearStep(pk) { return pk==='y100' ? 5 : 1; }
 
-// 日次ラベル（左=N日前、右=今日）
-function mkLabels(n) {
-  const now = new Date(), out = [];
-  for (let i = n-1; i >= 0; i--) {
-    const d = new Date(now); d.setDate(d.getDate()-i);
-    out.push((d.getMonth()+1)+'/'+(d.getDate()));
-  }
-  return out;
-}
+// 後方互換
+function mkLabels(n) { return mkPeriodLabels(); }
+function mkHourLabels() { return mkPeriodLabels(); }
+function mkMonthLabels(n) { return mkPeriodLabels(); }
 
-// 時間ラベル（左=23時間前、右=現在）
-function mkHourLabels() {
-  const now = new Date(), out = [];
-  for (let i = 23; i >= 0; i--) {
-    const d = new Date(now); d.setHours(d.getHours()-i, 0, 0, 0);
-    out.push(d.getHours().toString().padStart(2,'0')+':00');
-  }
-  return out;
-}
-
-// 月次ラベル（左=N月前、右=今月）
-function mkMonthLabels(n) {
-  const now = new Date(), out = [];
-  for (let i = n-1; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
-    out.push((d.getMonth()+1)+'月');
-  }
-  return out;
-}
-
-// 期間に応じたラベルを返す
-function mkPeriodLabels(n) {
-  if (DAYS <= 1) return mkHourLabels();    // 「日」→ 時間軸
-  return mkLabels(n);                      // それ以外 → 日付軸
+// =====================================================
+// 期間キー（長期データ用）
+// =====================================================
+function getPeriodKey() {
+  if (DAYS >= 36500) return 'y100';
+  if (DAYS >= 10950) return 'y30';
+  if (DAYS >= 7300)  return 'y20';
+  if (DAYS >= 3650)  return 'y10';
+  return null;
 }
 
 function drawChart(id, labels, data, color, h, opts={}) {
@@ -673,9 +704,11 @@ function drawFX(live) {
 
     // ── 実データがある場合のみグラフ描画 ──
     if (avHist?.length >= 2) {
-      // AV日次データ（最も正確）
-      const col = setCardSeries(id, fmt(lv||avHist[avHist.length-1]), avHist);
-      drawChart('ch-'+id, mkLabels(avHist.length), avHist, col, 52, {label:lbl});
+      // AV日次データ: 期間に応じてスライス（末尾=最新）
+      const cfg = getPeriodConfig();
+      const sl = avHist.slice(-cfg.pts);
+      const col = setCardSeries(id, fmt(lv||sl[sl.length-1]), sl);
+      drawChart('ch-'+id, mkPeriodLabels(), sl, col, 52, {label:lbl});
       return;
     }
     if (pk && LONG_MAP[id]?.[pk]) {
@@ -715,9 +748,11 @@ function drawStocks(live) {
     const avHist = live['h_'+id];
 
     if (avHist?.length >= 2) {
-      // ── AV実データ ──
-      const col = setCardSeries(id, fmt(val), avHist);
-      drawChart('ch-'+id, mkLabels(avHist.length), avHist, col, 52, {label:lbl});
+      // AV実データ: 期間に応じてスライス
+      const cfg = getPeriodConfig();
+      const sl = avHist.slice(-cfg.pts);
+      const col = setCardSeries(id, fmt(val), sl);
+      drawChart('ch-'+id, mkPeriodLabels(), sl, col, 52, {label:lbl});
       return;
     }
     if (pk && LONG_MAP[id]?.[pk]) {
@@ -748,8 +783,18 @@ function drawRates(live) {
     // 「日」または長期: グラフなし（月次データのみ）
     if (CI['ch-loan']) { CI['ch-loan'].destroy(); delete CI['ch-loan']; }
   } else {
-    const ln = Math.min(DAYS<=7?4:DAYS<=35?6:DAYS<=95?12:24, LOAN_VAR_H.length);
-    drawChart('ch-loan', mkMonthLabels(ln), null, null, 58, {
+    // 月次データなので、期間に応じた月数でスライス
+    const cfg2 = getPeriodConfig();
+    // 住宅ローンは月次データのみなので、月単位換算でスライス
+    const lmonths = DAYS<=7?4 : DAYS<=35?6 : DAYS<=95?12 : DAYS<=185?18 : DAYS<=365?24 : Math.min(LOAN_VAR_H.length,24);
+    const ln = Math.min(lmonths, LOAN_VAR_H.length);
+    const loanLabels = mkYearLabels(new Array(ln),
+      (() => { const d=new Date(); d.setMonth(d.getMonth()-(ln-1)); return d.getFullYear()+(d.getMonth()==0?'':d.getMonth()+'月').toString().slice(-2); })(),
+      1).map((_,i)=>{
+        const d=new Date(); d.setMonth(d.getMonth()-(ln-1-i));
+        return (d.getFullYear()%100)+'/'+(d.getMonth()+1);
+      });
+    drawChart('ch-loan', loanLabels, null, null, 58, {
       rate:true,
       datasets:[
         {label:'変動35年',  data:LOAN_VAR_H.slice(-ln), color:'#00E07A'},
@@ -780,7 +825,13 @@ function drawRates(live) {
     const sl  = refH.slice(-Math.max(2,pts));
     if (cls) setCardSeries(id, fmtV, sl, cls);
     else { const c2 = setCardSeries(id, fmtV, sl); color = c2; }
-    drawChart('ch-'+id, mkMonthLabels(sl.length), sl, color, h, {rate:true, label:lbl});
+    // 月次データのラベル
+    const rateLbs = (() => {
+      const out=[], n=sl.length, now=new Date();
+      for(let i=n-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);out.push((d.getFullYear()%100)+'/'+(d.getMonth()+1));}
+      return out;
+    })();
+    drawChart('ch-'+id, rateLbs, sl, color, h, {rate:true, label:lbl});
   }
 
   rateChart('sprme', REF.sprme.v, REF.sprme.h, 'sprme', '#F5C842', 52, '短期プライム', 'gc');
