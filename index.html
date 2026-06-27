@@ -695,39 +695,45 @@ function setCardSeries(id, valStr, series, colorCls, opts={}) {
 function drawFX(live) {
   const FMT = {usdjpy:v=>v.toFixed(2), eurjpy:v=>v.toFixed(2), inrjpy:v=>v.toFixed(3)};
   const LBL = {usdjpy:'USD/JPY', eurjpy:'EUR/JPY', inrjpy:'INR/JPY'};
+  const pk  = getPeriodKey(); // null = 短期(日〜年)、'y10'〜'y100' = 長期
 
   ['usdjpy','eurjpy','inrjpy'].forEach(id => {
     const lv  = live[id];
     const fmt = FMT[id], lbl = LBL[id];
-    const avHist = live['h_'+id];   // Alpha Vantage 実データ
-    const pk     = getPeriodKey();
 
-    // ── 実データがある場合のみグラフ描画 ──
-    if (avHist?.length >= 2) {
-      // AV日次データ: 期間に応じてスライス（末尾=最新）
-      const cfg = getPeriodConfig();
-      const sl = avHist.slice(-cfg.pts);
-      const col = setCardSeries(id, fmt(lv||sl[sl.length-1]), sl);
-      drawChart('ch-'+id, mkPeriodLabels(), sl, col, 52, {label:lbl});
-      return;
-    }
-    if (pk && LONG_MAP[id]?.[pk]) {
-      // 長期年次実績データ
-      const ld = LONG_MAP[id][pk];
-      // 末尾はLIVE値で上書き（実際の現在値）
-      const series = lv ? [...ld.slice(0,-1), lv] : ld;
-      const col = setCardSeries(id, fmt(lv||ld[ld.length-1]), series);
-      drawChart('ch-'+id, mkYearLabels(series, getStartYear(id, pk), getYearStep(pk)), series, col, 52, {label:lbl});
-      return;
-    }
-
-    // ── グラフなし: 現在値のみ表示 ──
-    if (lv && isFinite(lv)) {
-      setCard(id, fmt(lv), {text:'リアルタイム値（グラフ: AV登録後）', cls:'up'}, 'up');
+    if (!pk) {
+      // ── 短期（日〜年）: AV実データのみ使用 ──
+      const avHist = live['h_'+id];
+      if (avHist?.length >= 2) {
+        const cfg = getPeriodConfig();
+        const sl  = avHist.slice(-cfg.pts);
+        const col = setCardSeries(id, fmt(lv||sl[sl.length-1]), sl);
+        drawChart('ch-'+id, mkPeriodLabels(), sl, col, 52, {label:lbl});
+      } else {
+        // AVなし → グラフなし、現在値のみ
+        if (lv && isFinite(lv)) {
+          setCard(id, fmt(lv), {text:'リアルタイム値（グラフ: AV登録後）', cls:'up'}, 'up');
+        } else {
+          setCard(id, '---', {text:'取得失敗', cls:'na'}, 'ac');
+        }
+        if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+      }
     } else {
-      setCard(id, '---', {text:'取得失敗', cls:'na'}, 'ac');
+      // ── 長期（10年〜100年）: 年次実績データを使用 ──
+      if (LONG_MAP[id]?.[pk]) {
+        const ld  = LONG_MAP[id][pk];
+        const ser = lv ? [...ld.slice(0,-1), lv] : [...ld];
+        const col = setCardSeries(id, fmt(lv||ser[ser.length-1]), ser);
+        drawChart('ch-'+id, mkYearLabels(ser, getStartYear(id,pk), getYearStep(pk)), ser, col, 52, {label:lbl});
+      } else {
+        if (lv && isFinite(lv)) {
+          setCard(id, fmt(lv), {text:'リアルタイム値（長期データなし）', cls:'up'}, 'up');
+        } else {
+          setCard(id, '---', {text:'取得失敗', cls:'na'}, 'ac');
+        }
+        if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+      }
     }
-    if (CI[id]) { CI[id].destroy(); delete CI[id]; }
   });
 }
 
@@ -747,54 +753,52 @@ function drawStocks(live) {
     const val    = REF[id].v;
     const avHist = live['h_'+id];
 
-    if (avHist?.length >= 2) {
-      // AV実データ: 期間に応じてスライス
-      const cfg = getPeriodConfig();
-      const sl = avHist.slice(-cfg.pts);
-      const col = setCardSeries(id, fmt(val), sl);
-      drawChart('ch-'+id, mkPeriodLabels(), sl, col, 52, {label:lbl});
-      return;
+    if (!pk) {
+      // ── 短期（日〜年）: AV実データのみ ──
+      if (avHist?.length >= 2) {
+        const cfg = getPeriodConfig();
+        const sl  = avHist.slice(-cfg.pts);
+        const col = setCardSeries(id, fmt(val), sl);
+        drawChart('ch-'+id, mkPeriodLabels(), sl, col, 52, {label:lbl});
+      } else {
+        const msg = DAYS<=1 ? '日中データなし' : 'グラフ: AV登録後に表示';
+        setCard(id, fmt(val), {text:msg, cls:'na'}, 'up');
+        if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+      }
+    } else {
+      // ── 長期（10年〜100年）: 年次実績データ ──
+      if (LONG_MAP[id]?.[pk]) {
+        const ld  = [...LONG_MAP[id][pk]];
+        ld[ld.length-1] = val;
+        const col = setCardSeries(id, fmt(val), ld);
+        drawChart('ch-'+id, mkYearLabels(ld, getStartYear(id,pk), getYearStep(pk)), ld, col, 52, {label:lbl});
+      } else {
+        setCard(id, fmt(val), {text:'この指数の長期データは未収録', cls:'na'}, 'up');
+        if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+      }
     }
-    if (pk && LONG_MAP[id]?.[pk]) {
-      // ── 長期年次実績データ ──
-      const ld = [...LONG_MAP[id][pk]];
-      ld[ld.length-1] = val; // 末尾=現在の参考値
-      const col = setCardSeries(id, fmt(val), ld);
-      drawChart('ch-'+id, mkYearLabels(ld, getStartYear(id, pk), getYearStep(pk)), ld, col, 52, {label:lbl});
-      return;
-    }
-
-    // ── グラフなし ──
-    const msg = DAYS<=1 ? '日中データなし'
-      : isLongTerm() ? 'この指数の長期データは未収録'
-      : 'グラフ: AV登録後に表示';
-    setCard(id, fmt(val), {text:msg, cls:'na'}, 'up');
-    if (CI[id]) { CI[id].destroy(); delete CI[id]; }
   });
 }
 
 function drawRates(live) {
   const pk = getPeriodKey();
 
-  // ── 住宅ローン（実際の公表値・月次）──
+  // ── 住宅ローン（月次公表値）──
   document.getElementById('v-loan-var').textContent = '2.875%';
   document.getElementById('v-loan-fix').textContent = '1.820%';
-  if (DAYS <= 1 || isLongTerm()) {
-    // 「日」または長期: グラフなし（月次データのみ）
+  if (DAYS <= 1 || pk) {
+    // 「日」または長期（10年〜）: グラフなし
     if (CI['ch-loan']) { CI['ch-loan'].destroy(); delete CI['ch-loan']; }
   } else {
-    // 月次データなので、期間に応じた月数でスライス
-    const cfg2 = getPeriodConfig();
-    // 住宅ローンは月次データのみなので、月単位換算でスライス
-    const lmonths = DAYS<=7?4 : DAYS<=35?6 : DAYS<=95?12 : DAYS<=185?18 : DAYS<=365?24 : Math.min(LOAN_VAR_H.length,24);
-    const ln = Math.min(lmonths, LOAN_VAR_H.length);
-    const loanLabels = mkYearLabels(new Array(ln),
-      (() => { const d=new Date(); d.setMonth(d.getMonth()-(ln-1)); return d.getFullYear()+(d.getMonth()==0?'':d.getMonth()+'月').toString().slice(-2); })(),
-      1).map((_,i)=>{
-        const d=new Date(); d.setMonth(d.getMonth()-(ln-1-i));
-        return (d.getFullYear()%100)+'/'+(d.getMonth()+1);
-      });
-    drawChart('ch-loan', loanLabels, null, null, 58, {
+    // 週〜年: 月次データを期間に応じてスライス
+    const lm = DAYS<=7?4:DAYS<=35?6:DAYS<=95?12:DAYS<=185?18:24;
+    const ln = Math.min(lm, LOAN_VAR_H.length);
+    const loanLbs = (()=>{
+      const out=[], now=new Date();
+      for(let i=ln-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);out.push((d.getFullYear()%100)+'/'+(d.getMonth()+1));}
+      return out;
+    })();
+    drawChart('ch-loan', loanLbs, null, null, 58, {
       rate:true,
       datasets:[
         {label:'変動35年',  data:LOAN_VAR_H.slice(-ln), color:'#00E07A'},
@@ -803,35 +807,42 @@ function drawRates(live) {
     });
   }
 
-  // 共通ヘルパー: 金利グラフ
-  // refH = 月次公表値（実際の数値）、longKey = LONG_MAPのキー
+  // ── 金利グラフ共通ヘルパー ──
   function rateChart(id, val, refH, longKey, color, h, lbl, cls) {
     const fmtV = val.toFixed(3)+'%';
+
     if (DAYS <= 1) {
-      setCard(id, fmtV, {text:'日中変動なし（月次公表値）',cls:'na'}, cls||'up');
+      // 「日」: グラフなし
+      setCard(id, fmtV, {text:'日中変動なし（月次公表値）', cls:'na'}, cls||'up');
       if (CI['ch-'+id]) { CI['ch-'+id].destroy(); delete CI['ch-'+id]; }
       return;
     }
-    if (pk && LONG_MAP[longKey]?.[pk]) {
-      // 長期年次実績データ
-      const ld = [...LONG_MAP[longKey][pk]]; ld[ld.length-1] = val;
-      if (cls) setCardSeries(id, fmtV, ld, cls);
-      else { const c2 = setCardSeries(id, fmtV, ld); color = c2; }
-      drawChart('ch-'+id, mkYearLabels(ld, getStartYear(longKey, pk), getYearStep(pk)), ld, color, h, {rate:true, label:lbl});
-      return;
+
+    if (!pk) {
+      // ── 短期（週〜年）: 月次公表値をそのまま使う ──
+      const pts = DAYS<=7?3:DAYS<=30?4:DAYS<=90?6:DAYS<=180?9:refH.length;
+      const sl  = refH.slice(-Math.max(2,pts));
+      if (cls) setCardSeries(id, fmtV, sl, cls);
+      else { const c2=setCardSeries(id,fmtV,sl); color=c2; }
+      // 月次ラベル
+      const lbs = (()=>{
+        const out=[], n=sl.length, now=new Date();
+        for(let i=n-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);out.push((d.getFullYear()%100)+'/'+(d.getMonth()+1));}
+        return out;
+      })();
+      drawChart('ch-'+id, lbs, sl, color, h, {rate:true, label:lbl});
+    } else {
+      // ── 長期（10年〜100年）: 年次実績データ ──
+      if (LONG_MAP[longKey]?.[pk]) {
+        const ld=[...LONG_MAP[longKey][pk]]; ld[ld.length-1]=val;
+        if (cls) setCardSeries(id,fmtV,ld,cls);
+        else { const c2=setCardSeries(id,fmtV,ld); color=c2; }
+        drawChart('ch-'+id, mkYearLabels(ld,getStartYear(longKey,pk),getYearStep(pk)), ld, color, h, {rate:true, label:lbl});
+      } else {
+        setCard(id, fmtV, {text:'長期データなし', cls:'na'}, cls||'up');
+        if (CI['ch-'+id]) { CI['ch-'+id].destroy(); delete CI['ch-'+id]; }
+      }
     }
-    // 短期〜1年: 月次公表値（実際の値）
-    const pts = DAYS<=7?3:DAYS<=30?4:DAYS<=90?6:DAYS<=180?9:refH.length;
-    const sl  = refH.slice(-Math.max(2,pts));
-    if (cls) setCardSeries(id, fmtV, sl, cls);
-    else { const c2 = setCardSeries(id, fmtV, sl); color = c2; }
-    // 月次データのラベル
-    const rateLbs = (() => {
-      const out=[], n=sl.length, now=new Date();
-      for(let i=n-1;i>=0;i--){const d=new Date(now.getFullYear(),now.getMonth()-i,1);out.push((d.getFullYear()%100)+'/'+(d.getMonth()+1));}
-      return out;
-    })();
-    drawChart('ch-'+id, rateLbs, sl, color, h, {rate:true, label:lbl});
   }
 
   rateChart('sprme', REF.sprme.v, REF.sprme.h, 'sprme', '#F5C842', 52, '短期プライム', 'gc');
@@ -850,27 +861,35 @@ function drawBTC(live) {
 
 function drawMetals(live) {
   const pk = getPeriodKey();
-  [['gold',  '#F5C842','gc',v=>'$'+v.toFixed(1), 4010, LONG_GOLD,  'GOLD'],
-   ['silver','#A8C0D0','sc',v=>'$'+v.toFixed(2), 56.7, LONG_SILVER,'SILVER'],
-   ['plat',  '#7ECFCF','pc',v=>'$'+v.toFixed(1), 1577, null,       'PLATINUM']
+  [['gold',  '#F5C842','gc',v=>'$'+v.toFixed(1), 4090, LONG_GOLD,  'GOLD'],
+   ['silver','#A8C0D0','sc',v=>'$'+v.toFixed(2), 59.3, LONG_SILVER,'SILVER'],
+   ['plat',  '#7ECFCF','pc',v=>'$'+v.toFixed(1), 1625, null,       'PLATINUM']
   ].forEach(([id,col,cls,fmt,fb,longData,lbl])=>{
     const lv  = live[id];
     const val = (lv && isFinite(lv)) ? lv : fb;
 
-    if (pk && longData?.[pk]) {
-      // 長期年次実績データあり → グラフ表示
-      const ld = [...longData[pk]];
-      if (lv && isFinite(lv)) ld[ld.length-1] = lv; // 末尾=現在LIVE値
-      const c2 = setCardSeries(id, fmt(ld[ld.length-1]), ld, cls);
-      drawChart('ch-'+id, mkYearLabels(ld, getStartYear(id, pk), getYearStep(pk)), ld, col, 52, {money:true, label:lbl});
-      return;
+    if (!pk) {
+      // ── 短期（日〜年）: 現在値のみ（過去データなし）──
+      setCard(id, fmt(val), {
+        text: lv && isFinite(lv) ? 'リアルタイム値' : '参考値 (2026/6)',
+        cls:  lv && isFinite(lv) ? 'up' : 'na'
+      }, cls);
+      if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+    } else {
+      // ── 長期（10年〜100年）: 年次実績データ ──
+      if (longData?.[pk]) {
+        const ld = [...longData[pk]];
+        if (lv && isFinite(lv)) ld[ld.length-1] = lv;
+        const c2 = setCardSeries(id, fmt(ld[ld.length-1]), ld, cls);
+        drawChart('ch-'+id, mkYearLabels(ld, getStartYear(id,pk), getYearStep(pk)), ld, col, 52, {money:true, label:lbl});
+      } else {
+        setCard(id, fmt(val), {
+          text: lv && isFinite(lv) ? 'リアルタイム値（長期データなし）' : '参考値 (2026/6)',
+          cls:  lv && isFinite(lv) ? 'up' : 'na'
+        }, cls);
+        if (CI[id]) { CI[id].destroy(); delete CI[id]; }
+      }
     }
-    // 長期以外 or 長期データなし → 現在値のみ
-    setCard(id, fmt(val), {
-      text: lv && isFinite(lv) ? 'リアルタイム値' : '参考値 (2026/6)',
-      cls:  lv && isFinite(lv) ? 'up' : 'na'
-    }, cls);
-    if (CI[id]) { CI[id].destroy(); delete CI[id]; }
   });
 }
 
